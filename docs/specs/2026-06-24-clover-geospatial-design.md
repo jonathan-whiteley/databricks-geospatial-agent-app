@@ -59,7 +59,7 @@ Workspace: `fevm-clover-spatial.cloud.databricks.com` (CLI profile
 | 3 | Ask Genie | **Live**: real Genie space + Genie Conversation API for SQL+table; **FM API** for the ⚡Action. |
 | 4 | Stack | **Vite + React + Leaflet** frontend, **FastAPI** backend. |
 | 5 | Data location | New **`clover_spatial_catalog.gold`** schema (bronze untouched). |
-| 6 | FM endpoint | **`databricks-claude-sonnet-6`** serving endpoint for the ⚡Action. |
+| 6 | FM endpoint | **`databricks-claude-sonnet-4-6`** serving endpoint for the ⚡Action. |
 | 7 | Forecast | **`ai_forecast`** SQL function (DOW-seasonal average fallback). Must run on the **SQL warehouse**. |
 
 ## 4. Architecture
@@ -82,7 +82,7 @@ Databricks App: clover-geospatial-app
 **Connectivity & auth.** App service principal granted via app resources:
 - **SQL warehouse** (serverless) — all gold reads + `ai_forecast` build.
 - **Genie space** — Conversation API.
-- **Serving endpoint** `databricks-claude-sonnet-6` — ⚡Action generation.
+- **Serving endpoint** `databricks-claude-sonnet-4-6` — ⚡Action generation.
 SQL executed via `databricks-sql-connector` (or Statement Execution API) using
 the app SP's OAuth token. Local dev uses the `fe-vm-clover-spatial` profile.
 
@@ -160,7 +160,7 @@ rows), runnable as a notebook/job. Bronze is never mutated.
 3. Frontend renders the navy **SQL block** + styled **results table** (design
    markup).
 4. Frontend calls `POST /api/action` `{question, sql, rows}` → backend prompts
-   **`databricks-claude-sonnet-6`** for a one-line **next-best-action** framed for
+   **`databricks-claude-sonnet-4-6`** for a one-line **next-best-action** framed for
    a store-ops manager → rendered as the **⚡Action callout**.
 5. Seed message + suggestion chips preserved: *understaffed*, *labor hours*,
    *traffic drops*, *daypart peaks*, *staff this store*.

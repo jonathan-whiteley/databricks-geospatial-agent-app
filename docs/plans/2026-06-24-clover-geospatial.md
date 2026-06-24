@@ -4,15 +4,15 @@
 
 **Goal:** Ship a Databricks App for mock retailer Clover with an interactive Leaflet map, layer toggles, an in-viewport analytics panel, and a live Ask-Genie sidebar (SQL → results table → ⚡Action), backed by a synthesized labor/foot-traffic gold layer over `clover_spatial_catalog`.
 
-**Architecture:** A medallion `gold` schema (built from read-only `bronze` plus a deterministic synthetic generator) feeds both a Genie space and a FastAPI backend. The backend serves layer/analytics data from the SQL warehouse and proxies the Genie Conversation API + a `databricks-claude-sonnet-6` next-best-action call. A Vite + React + Leaflet frontend ports the approved `Clover Geospatial App.dc.html` design near-verbatim, swapping its static `clover-data.js` for backend calls.
+**Architecture:** A medallion `gold` schema (built from read-only `bronze` plus a deterministic synthetic generator) feeds both a Genie space and a FastAPI backend. The backend serves layer/analytics data from the SQL warehouse and proxies the Genie Conversation API + a `databricks-claude-sonnet-4-6` next-best-action call. A Vite + React + Leaflet frontend ports the approved `Clover Geospatial App.dc.html` design near-verbatim, swapping its static `clover-data.js` for backend calls.
 
-**Tech Stack:** Python 3.11 / FastAPI / `databricks-sdk` / `databricks-sql-connector`; Vite + React 18 + Leaflet 1.9.4 + leaflet.heat; Databricks Apps; Unity Catalog; Genie Conversation API; Foundation Model serving endpoint `databricks-claude-sonnet-6`.
+**Tech Stack:** Python 3.11 / FastAPI / `databricks-sdk` / `databricks-sql-connector`; Vite + React 18 + Leaflet 1.9.4 + leaflet.heat; Databricks Apps; Unity Catalog; Genie Conversation API; Foundation Model serving endpoint `databricks-claude-sonnet-4-6`.
 
 ## Global Constraints
 
 - Workspace/profile: **`fe-vm-clover-spatial`** (`https://fevm-clover-spatial.cloud.databricks.com`). All CLI calls pass `--profile=fe-vm-clover-spatial`.
 - Catalog **`clover_spatial_catalog`**; **`bronze` is READ-ONLY** (owned by `samyuktha.thumala@databricks.com`) — never write to it. All new objects go in **`gold`** (fallback catalog `clover_demo` only if `CREATE SCHEMA` is denied).
-- FM endpoint for ⚡Action: **`databricks-claude-sonnet-6`** (no other model).
+- FM endpoint for ⚡Action: **`databricks-claude-sonnet-4-6`** (no other model).
 - Forecast uses **`ai_forecast`**, which **must execute on the SQL warehouse** (not serverless notebook compute). DOW-seasonal mean is the only permitted fallback.
 - Target labor ratio: **165 visits per labor-hour** (config constant `TARGET_VISITS_PER_HOUR`). Staffing: `understaffed` if `labor_gap >= +8h`, `overstaffed` if `<= -8h`, else `balanced` (config `STAFFING_GAP_THRESHOLD = 8`).
 - Synthetic generation is **deterministic** (fixed seed `CLOVER_SEED = 42`); no `random` without the seed, no wall-clock in generation.
@@ -77,7 +77,7 @@ clover-geospatial-app/
 - Create: `clover-geospatial-app/data/__init__.py`, `backend/__init__.py`
 
 **Interfaces:**
-- Produces: `data/config.py` constants consumed by every later task — `PROFILE="fe-vm-clover-spatial"`, `CATALOG="clover_spatial_catalog"`, `GOLD_SCHEMA="gold"`, `BRONZE="clover_spatial_catalog.bronze"`, `GOLD="clover_spatial_catalog.gold"`, `CLOVER_SEED=42`, `TARGET_VISITS_PER_HOUR=165`, `STAFFING_GAP_THRESHOLD=8`, `METRO_CENTER=(42.3601,-71.0589)`, `METRO_ZOOM=11`, `SERVING_ENDPOINT="databricks-claude-sonnet-6"`.
+- Produces: `data/config.py` constants consumed by every later task — `PROFILE="fe-vm-clover-spatial"`, `CATALOG="clover_spatial_catalog"`, `GOLD_SCHEMA="gold"`, `BRONZE="clover_spatial_catalog.bronze"`, `GOLD="clover_spatial_catalog.gold"`, `CLOVER_SEED=42`, `TARGET_VISITS_PER_HOUR=165`, `STAFFING_GAP_THRESHOLD=8`, `METRO_CENTER=(42.3601,-71.0589)`, `METRO_ZOOM=11`, `SERVING_ENDPOINT="databricks-claude-sonnet-4-6"`.
 
 - [ ] **Step 1: Write `requirements.txt`**
 
@@ -105,14 +105,14 @@ echo "== CREATE SCHEMA test =="
 WID=$(databricks warehouses list --profile=$P -o json | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")
 echo "warehouse_id=$WID"
 databricks api post /api/2.0/sql/statements --profile=$P --json "{\"warehouse_id\":\"$WID\",\"statement\":\"CREATE SCHEMA IF NOT EXISTS clover_spatial_catalog.gold\",\"wait_timeout\":\"30s\"}" -o json | python3 -c "import sys,json;print(json.load(sys.stdin)['status']['state'])"
-echo "== serving endpoint =="; databricks serving-endpoints get databricks-claude-sonnet-6 --profile=$P -o json | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['name'],d['state'])" || echo "MISSING databricks-claude-sonnet-6"
+echo "== serving endpoint =="; databricks serving-endpoints get databricks-claude-sonnet-4-6 --profile=$P -o json | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['name'],d['state'])" || echo "MISSING databricks-claude-sonnet-4-6"
 echo "== genie create capability (list) =="; databricks api get /api/2.0/genie/spaces --profile=$P -o json | head -c 300 || echo "genie list not available"
 ```
 
 - [ ] **Step 4: Run preflight**
 
 Run: `bash clover-geospatial-app/preflight.sh`
-Expected: prints your username, a warehouse id, `CREATE SCHEMA` state `SUCCEEDED`, the serving endpoint name + state, and a Genie spaces response. If `CREATE SCHEMA` fails, switch `GOLD_SCHEMA`/`GOLD` in `config.py` to catalog `clover_demo` and re-run. If `databricks-claude-sonnet-6` is MISSING, STOP and report to the user before proceeding.
+Expected: prints your username, a warehouse id, `CREATE SCHEMA` state `SUCCEEDED`, the serving endpoint name + state, and a Genie spaces response. If `CREATE SCHEMA` fails, switch `GOLD_SCHEMA`/`GOLD` in `config.py` to catalog `clover_demo` and re-run. If `databricks-claude-sonnet-4-6` is MISSING, STOP and report to the user before proceeding.
 
 - [ ] **Step 5: Commit**
 
@@ -365,7 +365,7 @@ def test_in_view_aggregates():
 - Test: extend `backend/tests/test_api.py` (added in Task 8) with mocked clients
 
 **Interfaces:**
-- Produces: `ask_genie(question:str, conversation_id:str|None)->dict` (`{text, sql, columns, rows, conversation_id}`) using start-conversation / create-message + poll until status COMPLETED, extracting the `query` attachment text and reading its result rows (Genie returns `attachment.query.query` + a `statement_id`/result). `next_best_action(question, sql, rows)->str` calling `databricks-claude-sonnet-6` via the SDK serving client (OpenAI-compatible `chat.completions`), one short sentence framed for a store-ops manager, no em dashes.
+- Produces: `ask_genie(question:str, conversation_id:str|None)->dict` (`{text, sql, columns, rows, conversation_id}`) using start-conversation / create-message + poll until status COMPLETED, extracting the `query` attachment text and reading its result rows (Genie returns `attachment.query.query` + a `statement_id`/result). `next_best_action(question, sql, rows)->str` calling `databricks-claude-sonnet-4-6` via the SDK serving client (OpenAI-compatible `chat.completions`), one short sentence framed for a store-ops manager, no em dashes.
 
 - [ ] **Step 1: Implement `backend/genie.py`** — polling loop with timeout (config `GENIE_TIMEOUT_S=45`), graceful messages on timeout/no-SQL.
 
@@ -461,7 +461,7 @@ Run: `python -m backend.genie` and `python -m backend.action` — Expected: prin
 - Produces: a deployed Databricks App on `fe-vm-clover-spatial`.
 
 - [ ] **Step 1: Build frontend** — Run: `cd frontend && npm run build` — Expected: `frontend/dist` created.
-- [ ] **Step 2: Write `app.yaml`** — command `uvicorn backend.main:app --host 0.0.0.0 --port 8000`; `env` for `GOLD_SCHEMA`, `GENIE_SPACE_ID`, `SERVING_ENDPOINT`, `DATABRICKS_WAREHOUSE_ID`; `resources` block requesting the SQL warehouse, the Genie space, and the `databricks-claude-sonnet-6` serving endpoint (CAN_QUERY) for the app service principal. (Per memory: grant resources via `apps update --json` then redeploy if `apps deploy` ignores the block.)
+- [ ] **Step 2: Write `app.yaml`** — command `uvicorn backend.main:app --host 0.0.0.0 --port 8000`; `env` for `GOLD_SCHEMA`, `GENIE_SPACE_ID`, `SERVING_ENDPOINT`, `DATABRICKS_WAREHOUSE_ID`; `resources` block requesting the SQL warehouse, the Genie space, and the `databricks-claude-sonnet-4-6` serving endpoint (CAN_QUERY) for the app service principal. (Per memory: grant resources via `apps update --json` then redeploy if `apps deploy` ignores the block.)
 - [ ] **Step 3: Create + deploy app** — `databricks apps create clover-geospatial --profile=fe-vm-clover-spatial`; sync source (note: push `frontend/dist`; do NOT sync `node_modules`); `databricks apps deploy clover-geospatial --profile=fe-vm-clover-spatial`.
 - [ ] **Step 4: Grant gold + bronze SELECT and Genie/endpoint access** to the app service principal; verify `/healthz` and `/api/bootstrap` on the app URL.
 - [ ] **Step 5: Smoke-test deployed app** — web-devloop-tester against the app URL: map loads, layers toggle, KPIs recompute on zoom, Genie answers with SQL+table+Action.
