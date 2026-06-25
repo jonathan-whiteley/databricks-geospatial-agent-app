@@ -6,7 +6,7 @@
  * and lightning callout per the clover-app design spec.
  */
 
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { postGenieAsk, postAction } from './api.js';
 
 // Default question auto-run on mount
@@ -72,8 +72,8 @@ function GenieMessage({ msg }) {
           <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
               <span style={{ flex: 1.5, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
-              {table.hrest.map(h => (
-                <span key={h} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
+              {table.hrest.map((h, idx) => (
+                <span key={idx} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
               ))}
             </div>
             {table.rows.map((row, i) => (
@@ -126,42 +126,29 @@ function buildTable(columns, rows) {
 
 // ---------- Main GeniePanel ----------
 
-export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
+export default function GeniePanel({ onClose, seedQuestion }) {
   const scrollRef = useRef(null);
   const [messages, setMessages] = useState([]);
   const [typing, setTyping] = useState(false);
   const [draft, setDraft] = useState('');
   const [conversationId, setConversationId] = useState(null);
+  // Ref mirror of conversationId - always up to date regardless of render timing
+  const conversationIdRef = useRef(null);
+  // In-flight guard - prevents overlapping concurrent sends
+  const sendingRef = useRef(false);
   // Track if the auto-run default has been sent
   const autoSentRef = useRef(false);
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (scrollRef.current) {
-      setTimeout(() => { scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
-    }
-  }, [messages, typing]);
-
-  // Auto-run the default question on first mount
-  useEffect(() => {
-    if (autoSentRef.current) return;
-    autoSentRef.current = true;
-    sendMessage(DEFAULT_QUESTION, null, true /* isAuto */);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Handle seedQuestion from drill-down "Ask Genie how to staff this store"
-  // seedQuestion is { q, ts } so the same store re-clicked always fires
-  useEffect(() => {
-    if (!seedQuestion || !seedQuestion.q) return;
-    sendMessage(seedQuestion.q);
-  }, [seedQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function sendMessage(question, convId, isAuto) {
+  const sendMessage = useCallback(async (question, _unused, isAuto) => {
     const q = question.trim();
     if (!q) return;
 
-    // Use passed-in convId or current state (for chips/seedQuestion callers)
-    const usedConvId = convId !== undefined ? convId : conversationId;
+    // In-flight guard: reject overlapping sends
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+
+    // Read conversation id from ref - always current, never a stale closure
+    const usedConvId = conversationIdRef.current;
 
     // Append user bubble (skip for auto-run to avoid cluttering the panel on load)
     if (!isAuto) {
@@ -171,8 +158,9 @@ export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
 
     try {
       const res = await postGenieAsk(q, usedConvId);
-      // Thread the conversation
+      // Thread the conversation - update both ref (for immediate next-turn use) and state (for rendering)
       const newConvId = res.conversation_id || usedConvId;
+      conversationIdRef.current = newConvId;
       setConversationId(newConvId);
 
       const text = res.text || '';
@@ -205,16 +193,38 @@ export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
         }
       }
 
-      setTyping(false);
       setMessages(prev => [...prev, genieMsg]);
     } catch (err) {
-      setTyping(false);
       setMessages(prev => [...prev, {
         role: 'genie',
         text: 'Sorry, I could not reach the data space right now. Please try again in a moment.',
       }]);
+    } finally {
+      setTyping(false);
+      sendingRef.current = false;
     }
-  }
+  }, []); // stable - reads refs, not state closures
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      setTimeout(() => { scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
+    }
+  }, [messages, typing]);
+
+  // Auto-run the default question on first mount
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    autoSentRef.current = true;
+    sendMessage(DEFAULT_QUESTION, null, true /* isAuto */);
+  }, [sendMessage]); // sendMessage is stable (useCallback with empty deps)
+
+  // Handle seedQuestion from drill-down "Ask Genie how to staff this store"
+  // seedQuestion is { q, ts } so the same store re-clicked always fires
+  useEffect(() => {
+    if (!seedQuestion || !seedQuestion.q) return;
+    sendMessage(seedQuestion.q);
+  }, [seedQuestion, sendMessage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSendDraft() {
     const q = draft.trim();
@@ -263,7 +273,8 @@ export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
             <button
               key={c.key}
               onClick={() => handleChip(c.question)}
-              style={{ flex: '0 0 auto', whiteSpace: 'nowrap', border: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-navy)', borderRadius: 999, padding: '6px 12px', font: '500 11px var(--font-sans)', cursor: 'pointer' }}
+              disabled={typing}
+              style={{ flex: '0 0 auto', whiteSpace: 'nowrap', border: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-navy)', borderRadius: 999, padding: '6px 12px', font: '500 11px var(--font-sans)', cursor: typing ? 'not-allowed' : 'pointer', opacity: typing ? 0.45 : 1 }}
             >
               {c.label}
             </button>
@@ -273,13 +284,15 @@ export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
           <input
             value={draft}
             onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSendDraft()}
+            onKeyDown={e => e.key === 'Enter' && !typing && handleSendDraft()}
+            disabled={typing}
             placeholder="Ask about labor, staffing, foot traffic..."
-            style={{ flex: 1, border: 'none', outline: 'none', font: '400 13px var(--font-sans)', color: 'var(--db-ink)', background: 'transparent', height: 28 }}
+            style={{ flex: 1, border: 'none', outline: 'none', font: '400 13px var(--font-sans)', color: 'var(--db-ink)', background: 'transparent', height: 28, opacity: typing ? 0.55 : 1 }}
           />
           <button
             onClick={handleSendDraft}
-            style={{ flex: '0 0 auto', border: 'none', background: 'var(--db-lava)', color: '#fff', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            disabled={typing}
+            style={{ flex: '0 0 auto', border: 'none', background: 'var(--db-lava)', color: '#fff', width: 30, height: 30, borderRadius: 8, cursor: typing ? 'not-allowed' : 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: typing ? 0.45 : 1 }}
           >
             {'↑'}
           </button>
