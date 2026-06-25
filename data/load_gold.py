@@ -16,7 +16,7 @@ import sys
 from collections import defaultdict
 from datetime import date as _date
 
-from data.config import CATALOG, BRONZE, GOLD, GOLD_SCHEMA
+from data.config import CATALOG, BRONZE, GOLD, GOLD_SCHEMA, ANCHOR_DATE
 from data.generate_fleet import (
     make_fleet,
     make_daily_series,
@@ -220,7 +220,7 @@ def write_foot_traffic(
             visits_morning,
             visits_afternoon,
             visits_evening,
-            datediff(current_date(), CAST(date AS DATE)) AS days_ago,
+            datediff(DATE'{ANCHOR_DATE}', CAST(date AS DATE)) AS days_ago,
             unique_visitors / NULLIF(visits, 0) AS capture_rate
         FROM {BRONZE}.foot_traffic_daily
         WHERE location_id IN ({real_ids_sql})
@@ -253,7 +253,7 @@ def write_foot_traffic(
             unique_visitors = r["unique_visitors"] or 0
             capture_rate = (unique_visitors / visits) if visits else None
             row_date = _date.fromisoformat(r["date"])
-            days_ago_val = (REFERENCE_DATE - row_date).days
+            days_ago_val = (ANCHOR_DATE - row_date).days
             synth_gold_rows.append({
                 "store_id":         r["store_id"],
                 "date":             r["date"],

@@ -8,7 +8,7 @@ No Databricks, network, or file I/O occurs here.
 import random
 import math
 from datetime import date, timedelta
-from data.config import CLOVER_SEED, TARGET_VISITS_PER_HOUR
+from data.config import CLOVER_SEED, TARGET_VISITS_PER_HOUR, ANCHOR_DATE
 
 # Fixed reference date used as the "today" anchor for all date calculations.
 # Never use datetime.now() or wall-clock time; keep the generator deterministic.
@@ -106,12 +106,11 @@ def make_daily_series(store: dict, days: int = 540) -> list[dict]:
     rng = random.Random(CLOVER_SEED + sum(ord(c) for c in store_id))
     base = store.get("base_traffic", 1000)
 
-    # Anchor to a fixed start date for determinism (independent of wall clock).
-    start = date(2024, 12, 1)
-
+    # Anchor the series end to ANCHOR_DATE so the most recent row is always
+    # ANCHOR_DATE regardless of wall-clock time (determinism preserved).
     rows = []
     for i in range(days):
-        d = start + timedelta(days=i)
+        d = ANCHOR_DATE - timedelta(days=(days - 1 - i))
         dow = d.isoweekday()  # 1=Mon, 7=Sun
         is_weekend = dow >= 6
 
