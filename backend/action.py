@@ -91,6 +91,7 @@ def next_best_action(
     sql: str | None,
     rows: list,
     columns: list[str] | None = None,
+    user_token: str | None = None,
 ) -> str:
     """
     Generate a single next-best-action sentence for a store-ops manager.
@@ -105,6 +106,9 @@ def next_best_action(
         Result rows (list of lists or list of dicts).
     columns:
         Optional column names for the rows.
+    user_token:
+        If provided, query the serving endpoint on behalf of the viewing user
+        (OBO) instead of the app service principal.
 
     Returns
     -------
@@ -122,7 +126,7 @@ def next_best_action(
 
     try:
         from databricks.sdk.service.serving import ChatMessage, ChatMessageRole  # noqa: PLC0415
-        w = get_workspace_client()
+        w = get_workspace_client(user_token=user_token)
         response = w.serving_endpoints.query(
             name=endpoint,
             messages=[

@@ -27,7 +27,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -87,6 +87,22 @@ class ActionRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# On-behalf-of-user authentication
+# ---------------------------------------------------------------------------
+
+
+def get_user_token(request: Request) -> str | None:
+    """
+    Extract the viewing user's access token from the request headers.
+
+    Databricks Apps inject X-Forwarded-Access-Token for the authenticated user.
+    Returns None when absent (e.g. local dev or SP-only call), in which case the
+    downstream functions fall back to the default credential chain.
+    """
+    return request.headers.get("x-forwarded-access-token")
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -97,20 +113,23 @@ def healthz() -> dict[str, str]:
 
 
 @app.get("/api/bootstrap")
-def api_bootstrap() -> dict[str, Any]:
-    return layers.get_bootstrap()
+def api_bootstrap(user_token: str | None = Depends(get_user_token)) -> dict[str, Any]:
+    return layers.get_bootstrap(user_token=user_token)
 
 
 @app.get("/api/layers/{name}")
-def api_get_layer(name: str) -> dict[str, Any]:
+def api_get_layer(name: str, user_token: str | None = Depends(get_user_token)) -> dict[str, Any]:
     try:
-        return layers.get_layer(name)
+        return layers.get_layer(name, user_token=user_token)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/analytics")
-def api_analytics(req: AnalyticsRequest) -> dict[str, Any]:
+def api_analytics(
+    req: AnalyticsRequest,
+    user_token: str | None = Depends(get_user_token),
+) -> dict[str, Any]:
     """
     Compute in-viewport KPIs.
 
@@ -124,7 +143,7 @@ def api_analytics(req: AnalyticsRequest) -> dict[str, Any]:
         demographics dict       -- store_id -> demo dict
         bbox        tuple[float, float, float, float]
     """
-    bootstrap = layers.get_bootstrap()
+    bootstrap = layers.get_bootstrap(user_token=user_token)
 
     # bootstrap["locations"] uses "lng" (JS contract); analytics.compute_in_view
     # expects "lon". Remap here so analytics stays clean.
@@ -143,13 +162,19 @@ def api_analytics(req: AnalyticsRequest) -> dict[str, Any]:
 
 
 @app.post("/api/genie/ask")
-def api_genie_ask(req: GenieAskRequest) -> dict[str, Any]:
-    return genie.ask_genie(req.question, req.conversation_id)
+def api_genie_ask(
+    req: GenieAskRequest,
+    user_token: str | None = Depends(get_user_token),
+) -> dict[str, Any]:
+    return genie.ask_genie(req.question, req.conversation_id, user_token=user_token)
 
 
 @app.post("/api/action")
-def api_action(req: ActionRequest) -> dict[str, str]:
-    sentence = action.next_best_action(req.question, req.sql, req.rows)
+def api_action(
+    req: ActionRequest,
+    user_token: str | None = Depends(get_user_token),
+) -> dict[str, str]:
+    sentence = action.next_best_action(req.question, req.sql, req.rows, user_token=user_token)
     return {"action": sentence}
 
 

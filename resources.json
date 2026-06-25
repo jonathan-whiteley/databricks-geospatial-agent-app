@@ -1,4 +1,9 @@
 {
+  "user_api_scopes": [
+    "sql",
+    "serving.serving-endpoints",
+    "dashboards.genie"
+  ],
   "resources": [
     {
       "name": "sql-warehouse",

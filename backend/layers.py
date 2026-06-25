@@ -138,9 +138,12 @@ def _row_to_demo(row: dict) -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
-def get_bootstrap() -> dict:
+def get_bootstrap(user_token: str | None = None) -> dict:
     """
     Return the full bootstrap payload for GET /api/bootstrap.
+
+    When user_token is provided, all SQL runs on behalf of the viewing user
+    (OBO) instead of the app service principal.
 
     Shape:
         {
@@ -156,7 +159,8 @@ def get_bootstrap() -> dict:
     """
     # -- locations from gold.store_ops --
     store_rows = run_sql(
-        f"SELECT {_STORE_OPS_COLS} FROM {GOLD}.store_ops"
+        f"SELECT {_STORE_OPS_COLS} FROM {GOLD}.store_ops",
+        user_token=user_token,
     )
     locations = [_row_to_location(r) for r in store_rows]
 
@@ -165,7 +169,8 @@ def get_bootstrap() -> dict:
         f"SELECT store_id, days_ago, visits, avg_dwell_min, capture_rate "
         f"FROM {GOLD}.foot_traffic_daily "
         f"WHERE days_ago <= 29 "
-        f"ORDER BY store_id, days_ago"
+        f"ORDER BY store_id, days_ago",
+        user_token=user_token,
     )
     foot_traffic_daily = [_row_to_traffic_row(r) for r in ft_rows]
 
@@ -174,7 +179,8 @@ def get_bootstrap() -> dict:
         f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
         f"median_income_proxy, "
         f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
-        f"FROM {GOLD}.v_demographics"
+        f"FROM {GOLD}.v_demographics",
+        user_token=user_token,
     )
     demo_by_id: dict[str, dict] = {}
     for row in demo_rows:
@@ -199,26 +205,31 @@ def get_bootstrap() -> dict:
     }
 
 
-def get_layer(name: str) -> dict:
+def get_layer(name: str, user_token: str | None = None) -> dict:
     """
     Return layer data for GET /api/layers/{name}.
 
     All responses are wrapped in {"features": [...]} so the client has a
     consistent envelope regardless of layer type.
 
+    When user_token is provided, all SQL runs on behalf of the viewing user
+    (OBO) instead of the app service principal.
+
     Supported names: traffic, trade, demo, competitors, pois, cross.
     Raises ValueError for unknown names.
     """
     if name == "stores":
         store_rows = run_sql(
-            f"SELECT {_STORE_OPS_COLS} FROM {GOLD}.store_ops"
+            f"SELECT {_STORE_OPS_COLS} FROM {GOLD}.store_ops",
+            user_token=user_token,
         )
         features = [_row_to_location(r) for r in store_rows]
 
     elif name == "trade":
         rows = run_sql(
             f"SELECT store_id, origin_lat, origin_lng, visitors "
-            f"FROM {GOLD}.v_trade_areas"
+            f"FROM {GOLD}.v_trade_areas",
+            user_token=user_token,
         )
         features = [
             {
@@ -237,7 +248,8 @@ def get_layer(name: str) -> dict:
             f"d.income_lt50k, d.income_50_100k, d.income_100_150k, d.income_150_200k, d.income_gt200k, "
             f"s.lat, s.lon "
             f"FROM {GOLD}.v_demographics d "
-            f"JOIN {GOLD}.store_ops s ON d.store_id = s.store_id"
+            f"JOIN {GOLD}.store_ops s ON d.store_id = s.store_id",
+            user_token=user_token,
         )
         features = []
         for r in rows:
@@ -250,7 +262,8 @@ def get_layer(name: str) -> dict:
         rows = run_sql(
             f"SELECT name, category, poi_type, lat, lng, distance_mi "
             f"FROM {GOLD}.v_nearby_pois "
-            f"WHERE poi_type = 'competitor'"
+            f"WHERE poi_type = 'competitor'",
+            user_token=user_token,
         )
         features = [
             {
@@ -267,7 +280,8 @@ def get_layer(name: str) -> dict:
         rows = run_sql(
             f"SELECT name, category, poi_type, lat, lng, distance_mi "
             f"FROM {GOLD}.v_nearby_pois "
-            f"WHERE poi_type = 'complement'"
+            f"WHERE poi_type = 'complement'",
+            user_token=user_token,
         )
         features = [
             {
@@ -283,7 +297,8 @@ def get_layer(name: str) -> dict:
     elif name == "cross":
         rows = run_sql(
             f"SELECT a_lat, a_lng, b_lat, b_lng, shared_visitors "
-            f"FROM {GOLD}.v_cross_shopping"
+            f"FROM {GOLD}.v_cross_shopping",
+            user_token=user_token,
         )
         features = [
             {
@@ -304,10 +319,12 @@ def get_layer(name: str) -> dict:
         # the weighted heatmap. Using both sources gives the map both the hot
         # store nodes and the warm catchment cloud, matching the design intent.
         store_rows = run_sql(
-            f"SELECT lat, lon, recent_visits FROM {GOLD}.store_ops"
+            f"SELECT lat, lon, recent_visits FROM {GOLD}.store_ops",
+            user_token=user_token,
         )
         origin_rows = run_sql(
-            f"SELECT origin_lat, origin_lng, visitors FROM {GOLD}.v_trade_areas"
+            f"SELECT origin_lat, origin_lng, visitors FROM {GOLD}.v_trade_areas",
+            user_token=user_token,
         )
         features = []
         for r in store_rows:

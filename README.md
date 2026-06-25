@@ -30,6 +30,30 @@ data/
   build_forecast.sql  Forecast table DDL
 ```
 
+## Authentication Model
+
+The app uses on-behalf-of-user (OBO) authentication for every Unity Catalog, Genie, and serving-endpoint call. It does NOT rely on the app service principal having catalog access.
+
+How it works:
+
+- The app service principal does not hold (and cannot be granted) USE CATALOG on `clover_spatial_catalog`. The catalog is owned by another SP and only `jonathan.whiteley@databricks.com` has ALL PRIVILEGES.
+- When a user views the app, the Databricks Apps front door authenticates them via OAuth and injects an `X-Forwarded-Access-Token` header into every request reaching the FastAPI backend. That forwarded token carries the granular scopes configured on the app (`sql`, `serving.serving-endpoints`, `dashboards.genie`).
+- A FastAPI dependency (`get_user_token` in `backend/main.py`) reads `X-Forwarded-Access-Token` and threads it as `user_token` down through `layers.get_bootstrap`, `layers.get_layer`, `genie.ask_genie`, and `action.next_best_action`, and ultimately into `backend/db.run_sql` / `get_workspace_client`.
+- When `user_token` is present, `backend/db._client` builds `WorkspaceClient(host=..., token=user_token, auth_type="pat")`. Forcing `auth_type="pat"` is required because the Apps runtime also injects `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (the SP OAuth creds); without it the SDK detects two auth methods and raises "more than one authorization method configured: oauth and pat". The host is normalized to include `https://` because `DATABRICKS_HOST` in Apps is a bare hostname.
+- All queries therefore run as the viewing user, who has the necessary catalog privileges. The app SP is never granted catalog access.
+
+User-authorization scopes on the app (set via `databricks apps update --json @resources.json`):
+
+```json
+"user_api_scopes": ["sql", "serving.serving-endpoints", "dashboards.genie"]
+```
+
+The effective scopes also include the auto-granted defaults `iam.current-user:read` and `iam.access-control:read`.
+
+These scopes are stored in `resources.json` alongside the resource grants so a single `apps update` applies both. Applying `resources.json` without the `user_api_scopes` block would reset the scopes to null (the update is a full replace, not a merge).
+
+The SP-only path (a request with no `X-Forwarded-Access-Token`, e.g. background jobs) will fail with a Unity Catalog permission error because the SP lacks catalog access. This is expected; OBO is the only supported data path.
+
 ## Data Lineage
 
 ```

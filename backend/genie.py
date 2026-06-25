@@ -65,7 +65,11 @@ def _empty_result(text: str, conversation_id: str = "") -> dict:
     }
 
 
-def ask_genie(question: str, conversation_id: str | None = None) -> dict:
+def ask_genie(
+    question: str,
+    conversation_id: str | None = None,
+    user_token: str | None = None,
+) -> dict:
     """
     Ask Genie a question and return the structured response.
 
@@ -76,6 +80,9 @@ def ask_genie(question: str, conversation_id: str | None = None) -> dict:
     conversation_id:
         If provided, add a message to the existing conversation.
         If None, start a new conversation.
+    user_token:
+        If provided, run the Genie conversation on behalf of the viewing user
+        (OBO) instead of the app service principal.
 
     Returns
     -------
@@ -86,7 +93,7 @@ def ask_genie(question: str, conversation_id: str | None = None) -> dict:
     timeout_s = _timeout()
 
     try:
-        w = get_workspace_client()
+        w = get_workspace_client(user_token=user_token)
     except Exception as exc:
         log.error("Genie: failed to build WorkspaceClient: %s", exc)
         return _empty_result(f"Could not connect to Databricks: {exc}")

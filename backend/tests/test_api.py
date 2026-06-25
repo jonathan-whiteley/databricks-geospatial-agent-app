@@ -115,23 +115,23 @@ def _make_client(monkeypatch, *, bootstrap=None, layer=None, layer_raise=None,
     import backend.analytics as _analytics
 
     if bootstrap is not None:
-        monkeypatch.setattr(_layers, "get_bootstrap", lambda: bootstrap)
+        monkeypatch.setattr(_layers, "get_bootstrap", lambda user_token=None: bootstrap)
 
     if layer is not None:
-        monkeypatch.setattr(_layers, "get_layer", lambda name: layer)
+        monkeypatch.setattr(_layers, "get_layer", lambda name, user_token=None: layer)
 
     if layer_raise is not None:
-        def _raise(name):
+        def _raise(name, user_token=None):
             raise layer_raise
         monkeypatch.setattr(_layers, "get_layer", _raise)
 
     if genie_result is not None:
         monkeypatch.setattr(_genie, "ask_genie",
-                            lambda q, cid=None: genie_result)
+                            lambda q, cid=None, user_token=None: genie_result)
 
     if action_result is not None:
         monkeypatch.setattr(_action, "next_best_action",
-                            lambda q, sql, rows, columns=None: action_result)
+                            lambda q, sql, rows, columns=None, user_token=None: action_result)
 
     if analytics_result is not None:
         monkeypatch.setattr(_analytics, "compute_in_view",
@@ -244,7 +244,7 @@ class TestAnalytics:
         """
         import backend.layers as _layers
 
-        monkeypatch.setattr(_layers, "get_bootstrap", lambda: _BOOTSTRAP_PAYLOAD)
+        monkeypatch.setattr(_layers, "get_bootstrap", lambda user_token=None: _BOOTSTRAP_PAYLOAD)
 
         from backend.main import app
         client = TestClient(app)

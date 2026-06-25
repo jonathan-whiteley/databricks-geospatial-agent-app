@@ -31,15 +31,32 @@ _TYPE_CASTERS = {
 _POLL_INTERVAL = 1.0  # seconds between polls when statement is PENDING/RUNNING
 
 
-def _client(profile: str | None = None) -> WorkspaceClient:
+def _client(profile: str | None = None, user_token: str | None = None) -> WorkspaceClient:
     """
     Return a WorkspaceClient.
 
-    When a profile is explicitly supplied it always takes precedence.
+    When user_token is supplied it always takes top priority: the client is
+    built against DATABRICKS_HOST with that token so calls run on behalf of the
+    viewing user (OBO authentication via the X-Forwarded-Access-Token header).
+
+    When a profile is explicitly supplied it takes precedence over env defaults.
     Otherwise: uses explicit profile when DATABRICKS_CONFIG_PROFILE is set or
     when DATABRICKS_HOST / DATABRICKS_TOKEN are absent (i.e., not running as a
     Databricks App with injected credentials).
     """
+    if user_token is not None:
+        # On-behalf-of-user: run as the viewing user, not the app SP.
+        # In Databricks Apps DATABRICKS_HOST may be a bare hostname (no scheme);
+        # the SDK needs a full https:// URL, so normalize it.
+        host = os.environ["DATABRICKS_HOST"]
+        if not host.startswith("http"):
+            host = f"https://{host}"
+        # The Apps runtime also injects DATABRICKS_CLIENT_ID/SECRET (the app SP
+        # OAuth creds). If we only pass token=, the SDK auto-detects those env
+        # vars too and errors with "more than one authorization method
+        # configured: oauth and pat". Force PAT-only auth so the user token wins.
+        return WorkspaceClient(host=host, token=user_token, auth_type="pat")
+
     if profile is not None:
         return WorkspaceClient(profile=profile)
 
@@ -53,28 +70,30 @@ def _client(profile: str | None = None) -> WorkspaceClient:
     return WorkspaceClient(profile=env_profile)
 
 
-def get_workspace_client(profile: str | None = None) -> WorkspaceClient:
+def get_workspace_client(profile: str | None = None, user_token: str | None = None) -> WorkspaceClient:
     """Public wrapper around _client(); returns a WorkspaceClient."""
-    return _client(profile)
+    return _client(profile, user_token=user_token)
 
 
 def _warehouse_id() -> str:
     return os.getenv("DATABRICKS_WAREHOUSE_ID", "f8b3878560d8debf")
 
 
-def run_sql(statement: str, profile: str | None = None) -> list[dict]:
+def run_sql(statement: str, profile: str | None = None, user_token: str | None = None) -> list[dict]:
     """
     Execute a SQL statement and return a list of row dicts.
 
-    When profile is provided, constructs the WorkspaceClient with that profile
-    (overriding any env/default). When None, uses the default credential chain.
+    When user_token is provided, runs the statement on behalf of the viewing
+    user (OBO). When profile is provided, constructs the WorkspaceClient with
+    that profile (overriding any env/default). When both are None, uses the
+    default credential chain.
 
     Waits up to ~50 s for the statement to complete (wait_timeout="50s").
     Falls back to polling if the warehouse responds PENDING or RUNNING.
     Raises RuntimeError on FAILED or CANCELLED.
     Returns an empty list for statements that produce no rows.
     """
-    w = _client(profile)
+    w = _client(profile, user_token=user_token)
     wh_id = _warehouse_id()
 
     resp = w.statement_execution.execute_statement(
@@ -119,16 +138,18 @@ def run_sql(statement: str, profile: str | None = None) -> list[dict]:
     return rows
 
 
-def exec_sql(statement: str, profile: str | None = None) -> None:
+def exec_sql(statement: str, profile: str | None = None, user_token: str | None = None) -> None:
     """
     Execute a SQL statement and discard results.
 
-    When profile is provided, constructs the WorkspaceClient with that profile
-    (overriding any env/default). When None, uses the default credential chain.
+    When user_token is provided, runs the statement on behalf of the viewing
+    user (OBO). When profile is provided, constructs the WorkspaceClient with
+    that profile (overriding any env/default). When both are None, uses the
+    default credential chain.
 
     Useful for DDL (CREATE TABLE, DROP TABLE, etc.) and DML (INSERT, MERGE).
     """
-    w = _client(profile)
+    w = _client(profile, user_token=user_token)
     wh_id = _warehouse_id()
 
     resp = w.statement_execution.execute_statement(
