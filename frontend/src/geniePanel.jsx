@@ -34,6 +34,48 @@ function TypingIndicator() {
   );
 }
 
+// Render the inline **bold** subset Genie returns. Even segments are plain
+// text, odd segments are bold.
+function renderInline(text) {
+  return text.split(/\*\*(.+?)\*\*/g).map((seg, i) =>
+    i % 2 === 1 ? <b key={i}>{seg}</b> : seg
+  );
+}
+
+// Lightweight renderer for the small markdown subset Genie returns:
+// **bold**, "- " / "* " bullet lines, and paragraph line breaks.
+function FormattedText({ text, color }) {
+  const lines = (text || '').split('\n');
+  const blocks = [];
+  let bullets = null;
+  const flush = () => { if (bullets) { blocks.push(bullets); bullets = null; } };
+  lines.forEach((raw) => {
+    const line = raw.trimEnd();
+    const m = line.match(/^\s*[-*]\s+(.*)$/);
+    if (m) {
+      if (!bullets) bullets = { type: 'ul', items: [] };
+      bullets.items.push(m[1]);
+    } else {
+      flush();
+      if (line.trim() !== '') blocks.push({ type: 'p', text: line });
+    }
+  });
+  flush();
+  return (
+    <div style={{ font: '400 13px/1.5 var(--font-sans)', color }}>
+      {blocks.map((b, i) =>
+        b.type === 'ul' ? (
+          <ul key={i} style={{ margin: '4px 0', paddingLeft: 18 }}>
+            {b.items.map((it, j) => <li key={j} style={{ marginBottom: 2 }}>{renderInline(it)}</li>)}
+          </ul>
+        ) : (
+          <p key={i} style={{ margin: i === 0 ? 0 : '6px 0 0' }}>{renderInline(b.text)}</p>
+        )
+      )}
+    </div>
+  );
+}
+
 function GenieMessage({ msg }) {
   const isGenie = msg.role === 'genie';
   const wrapStyle = { alignSelf: isGenie ? 'stretch' : 'flex-end', maxWidth: isGenie ? '100%' : '88%' };
@@ -57,7 +99,7 @@ function GenieMessage({ msg }) {
         </div>
       )}
       <div style={bubbleStyle}>
-        <div style={{ font: '400 13px/1.5 var(--font-sans)', color: textColor }}>{msg.text}</div>
+        <FormattedText text={msg.text} color={textColor} />
 
         {/* Navy SQL block */}
         {msg.sql && (

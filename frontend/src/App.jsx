@@ -364,8 +364,17 @@ export default function App() {
         </div>
 
         {/* Left panel toggle handle */}
-        <button onClick={() => setShowLeft(l => !l)} style={leftToggleStyle}>
-          {showLeft ? '‹ Hide' : '☰ Layers & data'}
+        <button
+          onClick={() => setShowLeft(l => !l)}
+          style={{ ...leftToggleStyle, padding: '0 9px' }}
+          title={showLeft ? 'Hide layers panel' : 'Show layers panel'}
+          aria-label={showLeft ? 'Hide layers panel' : 'Show layers panel'}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <line x1="9" y1="3" x2="9" y2="21" />
+            {showLeft && <rect x="3.5" y="3.5" width="5.5" height="17" rx="1.5" fill="currentColor" stroke="none" opacity="0.18" />}
+          </svg>
         </button>
 
         {/* Heat legend - shown when traffic layer is on and map ready */}
@@ -390,7 +399,7 @@ export default function App() {
                 <span style={{ font: '600 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>{activeCount} on</span>
               </div>
               <div style={{ marginTop: 3, font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>
-                Tables in <span style={{ fontFamily: 'var(--font-mono)' }}>clover.retail_analytics</span>
+                Tables in <span style={{ fontFamily: 'var(--font-mono)' }}>clover_spatial_catalog.gold</span>
               </div>
             </div>
 
