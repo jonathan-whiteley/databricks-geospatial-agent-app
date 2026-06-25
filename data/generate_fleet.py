@@ -165,6 +165,77 @@ def inject_drop(rows: list[dict], store_id: str, pct: float, last_n: int = 5) ->
         row["visits_evening"] = evening
 
 
+def make_demographics(store: dict) -> dict:
+    """
+    Return deterministic income-band and age-band percentages for a store.
+
+    Uses a store-specific seed derived from CLOVER_SEED + char-sum + 7
+    (offset from make_daily_series so the sequences differ).
+
+    Returns a dict with keys:
+        store_id,
+        income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k
+            (floats, each band set sums to exactly 100.0)
+        age_18_24, age_25_34, age_35_44, age_45_54, age_55plus
+            (floats, each band set sums to exactly 100.0)
+
+    Flagship or larger-sqft stores skew toward higher income brackets.
+    The fleet is heterogeneous: each store gets a distinct profile.
+    """
+    store_id = store["store_id"]
+    rng = random.Random(CLOVER_SEED + sum(ord(c) for c in store_id) + 7)
+
+    # Flagship / large-sqft stores tilt toward higher income.
+    sqft = store.get("sqft", 2000)
+    is_flagship = store.get("format", "").lower() == "flagship" or store.get("banner", "").lower() == "flagship"
+    sqft_score = min(1.0, sqft / 6000.0)  # 0..1
+    income_bias = 0.3 if is_flagship else (sqft_score * 0.2)
+
+    # Raw weights for 5 income bands: <50k, 50-100k, 100-150k, 150-200k, 200k+
+    # Base profile: roughly middle-class Boston area; bias shifts weight toward upper bands.
+    w_inc = [
+        rng.uniform(0.05, 0.20) * (1.0 - income_bias),   # <50k
+        rng.uniform(0.20, 0.35),                           # 50-100k
+        rng.uniform(0.20, 0.35) * (1.0 + income_bias),    # 100-150k
+        rng.uniform(0.10, 0.25) * (1.0 + income_bias),    # 150-200k
+        rng.uniform(0.05, 0.15) * (1.0 + income_bias),    # 200k+
+    ]
+    # Normalize to exactly 100.0; assign remainder to largest band.
+    total_inc = sum(w_inc)
+    pcts_inc = [round(w / total_inc * 100.0, 1) for w in w_inc]
+    remainder_inc = round(100.0 - sum(pcts_inc), 1)
+    max_idx_inc = pcts_inc.index(max(pcts_inc))
+    pcts_inc[max_idx_inc] = round(pcts_inc[max_idx_inc] + remainder_inc, 1)
+
+    # Raw weights for 5 age bands: 18-24, 25-34, 35-44, 45-54, 55+
+    w_age = [
+        rng.uniform(0.08, 0.18),   # 18-24
+        rng.uniform(0.20, 0.35),   # 25-34 (core urban café demo)
+        rng.uniform(0.20, 0.30),   # 35-44
+        rng.uniform(0.12, 0.22),   # 45-54
+        rng.uniform(0.08, 0.18),   # 55+
+    ]
+    total_age = sum(w_age)
+    pcts_age = [round(w / total_age * 100.0, 1) for w in w_age]
+    remainder_age = round(100.0 - sum(pcts_age), 1)
+    max_idx_age = pcts_age.index(max(pcts_age))
+    pcts_age[max_idx_age] = round(pcts_age[max_idx_age] + remainder_age, 1)
+
+    return {
+        "store_id":          store_id,
+        "income_lt50k":      pcts_inc[0],
+        "income_50_100k":    pcts_inc[1],
+        "income_100_150k":   pcts_inc[2],
+        "income_150_200k":   pcts_inc[3],
+        "income_gt200k":     pcts_inc[4],
+        "age_18_24":         pcts_age[0],
+        "age_25_34":         pcts_age[1],
+        "age_35_44":         pcts_age[2],
+        "age_45_54":         pcts_age[3],
+        "age_55plus":        pcts_age[4],
+    }
+
+
 def make_schedule(store: dict, forecast_visits: float) -> int:
     """
     Return scheduled_hours for a store given a forecast visit count.

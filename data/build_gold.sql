@@ -2,9 +2,9 @@
 -- Creates store_ops and all analytic views in clover_spatial_catalog.gold.
 --
 -- Depends on: gold.locations, gold.foot_traffic_daily, gold.labor_schedule,
---             gold.store_forecast, bronze.visitor_origins,
---             bronze.visitor_demographics, bronze.cross_shopping,
---             bronze.nearby_pois
+--             gold.store_forecast, gold.synth_visitor_demographics,
+--             bronze.visitor_origins, bronze.visitor_demographics,
+--             bronze.cross_shopping, bronze.nearby_pois
 --
 -- Run on SQL warehouse (same session as build_forecast.sql).
 
@@ -215,9 +215,18 @@ WHERE vo.zip_lat IS NOT NULL
 -- v_demographics
 -- Wide-pivot demographics: one row per store with income/age band columns
 -- plus a weighted median income proxy.
--- Only CLV-001, CLV-002, CLV-003 have bronze data.
+-- Source: UNION ALL of bronze.visitor_demographics (real 3 stores: CLV-001/002/003)
+-- and gold.synth_visitor_demographics (synthetic 12 stores: clv_s01..clv_s12).
+-- All 15 stores are covered.
 
 CREATE OR REPLACE VIEW clover_spatial_catalog.gold.v_demographics AS
+WITH all_demographics AS (
+    SELECT location_id, segment_type, segment, pct_of_visitors
+    FROM clover_spatial_catalog.bronze.visitor_demographics
+    UNION ALL
+    SELECT location_id, segment_type, segment, pct_of_visitors
+    FROM clover_spatial_catalog.gold.synth_visitor_demographics
+)
 SELECT
     location_id AS store_id,
     MAX(CASE WHEN segment_type='income' AND segment='<50k'     THEN pct_of_visitors END) AS income_lt50k,
@@ -240,7 +249,7 @@ SELECT
         ) / 100.0,
         0
     ) AS median_income_proxy
-FROM clover_spatial_catalog.bronze.visitor_demographics
+FROM all_demographics
 GROUP BY location_id;
 
 

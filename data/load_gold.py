@@ -20,6 +20,7 @@ from data.config import CATALOG, BRONZE, GOLD, GOLD_SCHEMA, ANCHOR_DATE
 from data.generate_fleet import (
     make_fleet,
     make_daily_series,
+    make_demographics,
     make_schedule,
     inject_drop,
     REFERENCE_DATE,
@@ -322,6 +323,68 @@ def write_labor_schedule(fleet: list[dict], daily_all: list[dict]) -> None:
     print(f"[gold.labor_schedule] {count} rows written")
 
 
+# ── Step 6: write gold.synth_visitor_demographics ─────────────────────────────
+
+def write_synth_demographics(synth_fleet: list[dict]) -> None:
+    """
+    Generate deterministic demographics for the 12 synthetic stores and write
+    them to gold.synth_visitor_demographics in long format matching
+    bronze.visitor_demographics (location_id, segment_type, segment, pct_of_visitors).
+
+    One row per income band (segment_type='income') and per age band
+    (segment_type='age') per store: 10 rows per store, 120 rows total.
+
+    Real stores (CLV-001/002/003) are NOT included here; they already live in
+    bronze.visitor_demographics and will be unioned in the view.
+    """
+    exec_sql(f"""
+        CREATE OR REPLACE TABLE {GOLD}.synth_visitor_demographics (
+            location_id     STRING  NOT NULL,
+            segment_type    STRING  NOT NULL,
+            segment         STRING  NOT NULL,
+            pct_of_visitors DOUBLE
+        )
+    """)
+
+    rows = []
+    income_bands = [
+        ("<50k",     "income_lt50k"),
+        ("50-100k",  "income_50_100k"),
+        ("100-150k", "income_100_150k"),
+        ("150-200k", "income_150_200k"),
+        ("200k+",    "income_gt200k"),
+    ]
+    age_bands = [
+        ("18-24", "age_18_24"),
+        ("25-34", "age_25_34"),
+        ("35-44", "age_35_44"),
+        ("45-54", "age_45_54"),
+        ("55+",   "age_55plus"),
+    ]
+
+    for store in synth_fleet:
+        demo = make_demographics(store)
+        for segment, key in income_bands:
+            rows.append({
+                "location_id":     store["store_id"],
+                "segment_type":    "income",
+                "segment":         segment,
+                "pct_of_visitors": demo[key],
+            })
+        for segment, key in age_bands:
+            rows.append({
+                "location_id":     store["store_id"],
+                "segment_type":    "age",
+                "segment":         segment,
+                "pct_of_visitors": demo[key],
+            })
+
+    _batch_insert(f"{GOLD}.synth_visitor_demographics", rows)
+    count = run_sql(f"SELECT COUNT(*) c FROM {GOLD}.synth_visitor_demographics")[0]["c"]
+    print(f"[gold.synth_visitor_demographics] {count} rows written "
+          f"({len(synth_fleet)} synthetic stores x 10 bands each)")
+
+
 # ── Entrypoint ──────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -369,6 +432,9 @@ def main() -> None:
     # Build flat synthetic daily list for labor schedule latest-visits lookup.
     synth_daily_flat = [r for series in synth_series_by_store.values() for r in series]
     write_labor_schedule(fleet, synth_daily_flat)
+
+    # Write synthetic demographics for the 12 synth stores.
+    write_synth_demographics(synth_fleet)
 
     print("=== Done ===")
 
