@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/databricks-corporate-slides-design-syste-2c161cad-335d-46f0-8c10-81ac40405251/colors_and_type.css">
+<script src="_ds/databricks-corporate-slides-design-syste-2c161cad-335d-46f0-8c10-81ac40405251/_ds_bundle.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  html,body{margin:0;height:100%;background:var(--db-oat-light);}
+  *{box-sizing:border-box;}
+  .lf::-webkit-scrollbar{width:8px;height:8px;}
+  .lf::-webkit-scrollbar-thumb{background:var(--db-gray-300);border-radius:8px;}
+  .lf::-webkit-scrollbar-track{background:transparent;}
+  .leaflet-container{font-family:var(--font-sans);background:#E7E4DE;}
+  .leaflet-control-attribution{font:400 10px var(--font-sans);background:rgba(255,255,255,.7);}
+  .leaflet-tooltip.cv-tt{background:var(--db-navy);border:none;color:#fff;font:600 11px var(--font-sans);padding:4px 8px;border-radius:6px;box-shadow:var(--shadow-md);}
+  .leaflet-tooltip.cv-tt:before{display:none;}
+  @keyframes cvpulse{0%{transform:scale(.6);opacity:.7;}70%{transform:scale(1.8);opacity:0;}100%{opacity:0;}}
+  @keyframes cvfade{from{transform:translateY(6px);}to{transform:translateY(0);}}
+  .cv-msg{animation:cvfade .22s ease-out;}
+</style>
+</helmet>
+
+<div style="height:100vh;width:100%;display:flex;flex-direction:column;overflow:hidden;font-family:var(--font-sans);color:var(--db-ink);">
+
+  <!-- ============ TOP BAR ============ -->
+  <div style="flex:0 0 56px;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--db-navy);color:#fff;z-index:1200;box-shadow:0 1px 0 rgba(0,0,0,.2);flex-wrap:nowrap;overflow:hidden;">
+    <img src="assets/databricks-logo-white.svg" style="height:19px;display:block;" alt="Databricks">
+    <div style="width:1px;height:22px;background:rgba(255,255,255,.18);"></div>
+    <div style="display:flex;align-items:baseline;gap:9px;flex-shrink:0;">
+      <span style="font:700 16px var(--font-sans);letter-spacing:-.01em;">Clover</span>
+      <span style="font:700 10px var(--font-sans);letter-spacing:.16em;text-transform:uppercase;color:var(--db-coral);">Geospatial&nbsp;Store&nbsp;Ops</span>
+    </div>
+    <div style="display:flex;gap:7px;margin-left:6px;flex-shrink:0;">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;background:rgba(255,255,255,.09);font:500 12px var(--font-sans);white-space:nowrap;">📍 {{ meta.metro }} <span style="opacity:.5">▾</span></span>
+      <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:7px;background:rgba(255,255,255,.09);font:500 12px var(--font-sans);white-space:nowrap;">{{ meta.date_window }} <span style="opacity:.5">▾</span></span>
+    </div>
+    <div style="flex:1;min-width:8px;"></div>
+    <button onClick="{{ toggleRight }}" style="{{ genieBtnStyle }}"><img src="assets/genie-icon-full-color.svg" style="width:15px;height:15px;display:block;"/>Ask Genie</button>
+    <div style="width:1px;height:22px;background:rgba(255,255,255,.18);flex-shrink:0;"></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;line-height:1.15;flex-shrink:0;">
+      <span style="font:600 10px var(--font-sans);color:rgba(255,255,255,.85);">Live</span>
+      <span style="font:400 10px var(--font-mono);color:rgba(255,255,255,.45);">{{ meta.refreshed }}</span>
+    </div>
+  </div>
+
+  <!-- ============ STAGE ============ -->
+  <div style="flex:1;min-height:0;position:relative;display:flex;background:var(--db-oat-medium);">
+
+    <sc-if value="{{ showLeft }}" hint-placeholder-val="{{ true }}">
+    <!-- ---- LEFT RAIL : LAYERS + ANALYTICS ---- -->
+    <div class="lf" style="flex:0 0 auto;width:336px;background:#fff;border-right:1px solid var(--db-line);display:flex;flex-direction:column;overflow-y:auto;z-index:600;{{ leftCss }}">
+      <div style="padding:16px 16px 12px;border-bottom:1px solid var(--db-line);">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font:700 13px var(--font-sans);letter-spacing:.02em;color:var(--db-navy);text-transform:uppercase;">Layers</span>
+          <span style="font:600 11px var(--font-sans);color:var(--db-ink-muted);">{{ activeCount }} on</span>
+        </div>
+        <div style="margin-top:3px;font:400 11px var(--font-sans);color:var(--db-ink-muted);">Tables in <span style="font-family:var(--font-mono);">clover.retail_analytics</span></div>
+      </div>
+      <div style="padding:8px;display:flex;flex-direction:column;gap:4px;">
+        <sc-for list="{{ layers }}" as="L" hint-placeholder-count="6">
+          <div onClick="{{ L.onToggle }}" style="{{ L.rowStyle }}">
+            <div style="flex:0 0 30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;background:{{ L.iconBg }};font-size:15px;">{{ L.icon }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font:600 13px var(--font-sans);color:var(--db-navy);">{{ L.name }}</div>
+              <div style="font:400 11px var(--font-mono);color:var(--db-ink-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ L.table }}</div>
+            </div>
+            <div style="{{ L.switchTrack }}"><div style="{{ L.switchKnob }}"></div></div>
+          </div>
+          <sc-if value="{{ L.showLegend }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:2px 10px 9px 48px;">
+              <sc-if value="{{ L.isStores }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-wrap:wrap;gap:7px 12px;">
+                  <sc-for list="{{ L.swatches }}" as="sw" hint-placeholder-count="3">
+                    <span style="display:inline-flex;align-items:center;gap:5px;font:500 10px var(--font-sans);color:var(--db-ink-muted);"><i style="width:8px;height:8px;border-radius:50%;background:{{ sw.color }};display:inline-block;"></i>{{ sw.label }}</span>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ L.isDemo }}" hint-placeholder-val="{{ false }}">
+                <div><div style="height:7px;border-radius:4px;background:linear-gradient(90deg,#E3EAEC,#7BA3AD,#1B5162);"></div><div style="display:flex;justify-content:space-between;font:400 9px var(--font-mono);color:var(--db-ink-muted);margin-top:2px;"><span>lower income</span><span>higher</span></div></div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <!-- ANALYTICS -->
+      <div style="display:flex;flex-direction:column;flex:0 0 auto;border-top:1px solid var(--db-line);background:var(--db-oat-light);{{ anaCss }}">
+        <div style="padding:14px 16px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--db-oat-light);z-index:2;">
+          <div>
+            <div style="font:700 13px var(--font-sans);letter-spacing:.02em;text-transform:uppercase;color:var(--db-navy);">Analytics</div>
+            <div style="font:400 11px var(--font-sans);color:var(--db-ink-muted);margin-top:2px;">{{ inViewLabel }}</div>
+          </div>
+          <span style="font-size:15px;opacity:.5;">🛰️</span>
+        </div>
+
+        <!-- selected store detail -->
+        <sc-if value="{{ hasSelected }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:0 12px 10px;border:1px solid var(--db-line);border-radius:12px;background:#fff;overflow:hidden;box-shadow:var(--shadow-sm);">
+            <div style="padding:11px 13px;display:flex;align-items:flex-start;gap:10px;border-bottom:1px solid var(--db-line);">
+              <div style="flex:0 0 8px;height:8px;border-radius:50%;margin-top:5px;background:{{ sel.dot }};"></div>
+              <div style="flex:1;min-width:0;">
+                <div style="font:700 14px var(--font-sans);color:var(--db-navy);">{{ sel.name }}</div>
+                <div style="font:400 11px var(--font-sans);color:var(--db-ink-muted);">{{ sel.format }} · {{ sel.zip }} · {{ sel.sqft }} sq ft</div>
+              </div>
+              <button onClick="{{ clearSel }}" style="border:none;background:var(--db-oat-medium);color:var(--db-ink-soft);width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:13px;line-height:1;">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--db-line);">
+              <div style="background:#fff;padding:9px 13px;"><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);text-transform:uppercase;letter-spacing:.06em;">Staffing</div><div style="font:700 13px var(--font-sans);color:{{ sel.statusColor }};text-transform:capitalize;">{{ sel.status }}</div></div>
+              <div style="background:#fff;padding:9px 13px;"><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);text-transform:uppercase;letter-spacing:.06em;">Labor gap</div><div style="font:700 13px var(--font-mono);color:{{ sel.statusColor }};">{{ sel.gapLabel }}</div></div>
+              <div style="background:#fff;padding:9px 13px;"><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);text-transform:uppercase;letter-spacing:.06em;">3-day traffic</div><div style="font:700 13px var(--font-mono);color:{{ sel.deltaColor }};">{{ sel.deltaLabel }}</div></div>
+              <div style="background:#fff;padding:9px 13px;"><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);text-transform:uppercase;letter-spacing:.06em;">Recommend</div><div style="font:700 13px var(--font-mono);color:var(--db-navy);">{{ sel.recLabel }}</div></div>
+            </div>
+            <button onClick="{{ askGenieStore }}" style="width:100%;border:none;border-top:1px solid var(--db-line);background:#fff;color:var(--db-lava);padding:9px;cursor:pointer;font:600 12px var(--font-sans);display:flex;align-items:center;justify-content:center;gap:6px;">✨ Ask Genie how to staff this store</button>
+          </div>
+        </sc-if>
+
+        <!-- KPI tiles -->
+        <div style="padding:0 12px;display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+            <div style="background:#fff;border:1px solid var(--db-line);border-radius:11px;padding:11px 12px;">
+              <div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);text-transform:uppercase;letter-spacing:.06em;">{{ k.label }}</div>
+              <div style="font:700 22px var(--font-sans);color:var(--db-navy);letter-spacing:-.01em;margin-top:3px;line-height:1;">{{ k.value }}</div>
+              <div style="display:flex;align-items:center;gap:4px;margin-top:6px;font:600 11px var(--font-mono);color:{{ k.deltaColor }};"><span>{{ k.arrow }}</span><span>{{ k.delta }}</span><span style="color:var(--db-ink-muted);font-weight:400;">{{ k.deltaNote }}</span></div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- trend -->
+        <div style="padding:12px;">
+          <div style="background:#fff;border:1px solid var(--db-line);border-radius:11px;padding:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+              <span style="font:600 12px var(--font-sans);color:var(--db-navy);">Foot traffic — trailing 30 days</span>
+              <span style="font:400 10px var(--font-mono);color:var(--db-ink-muted);">foot_traffic_daily</span>
+            </div>
+            <svg viewBox="0 0 320 96" style="width:100%;height:84px;display:block;overflow:visible;">
+              <defs><linearGradient id="cvgrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FF5F46" stop-opacity="0.28"/><stop offset="100%" stop-color="#FF5F46" stop-opacity="0"/></linearGradient></defs>
+              <line x1="0" y1="84" x2="320" y2="84" stroke="var(--db-line)" stroke-width="1"/>
+              <path d="{{ trendArea }}" fill="url(#cvgrad)"/>
+              <path d="{{ trendLine }}" fill="none" stroke="var(--db-lava)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+            </svg>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;font:400 10px var(--font-mono);color:var(--db-ink-muted);"><span>30d ago</span><span>today</span></div>
+          </div>
+        </div>
+
+        <!-- demographics -->
+        <div style="padding:0 12px 14px;">
+          <div style="background:#fff;border:1px solid var(--db-line);border-radius:11px;padding:12px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <span style="font:600 12px var(--font-sans);color:var(--db-navy);">Visitor demographics</span>
+              <span style="font:400 10px var(--font-mono);color:var(--db-ink-muted);">visitor_demographics</span>
+            </div>
+            <div style="display:flex;gap:14px;margin-bottom:12px;">
+              <div><div style="font:700 18px var(--font-sans);color:var(--db-navy);line-height:1;">{{ demoIncome }}</div><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);margin-top:3px;">median income</div></div>
+              <div style="width:1px;background:var(--db-line);"></div>
+              <div><div style="font:700 18px var(--font-sans);color:var(--db-navy);line-height:1;">{{ demoAge }}</div><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);margin-top:3px;">median age</div></div>
+              <div style="width:1px;background:var(--db-line);"></div>
+              <div><div style="font:700 18px var(--font-sans);color:var(--db-navy);line-height:1;">{{ demoKids }}</div><div style="font:400 10px var(--font-sans);color:var(--db-ink-muted);margin-top:3px;">hh w/ kids</div></div>
+            </div>
+            <sc-for list="{{ demoBars }}" as="b" hint-placeholder-count="6">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="flex:0 0 42px;font:500 11px var(--font-mono);color:var(--db-ink-soft);text-align:right;">{{ b.band }}</span>
+                <div style="flex:1;height:9px;background:var(--db-oat-medium);border-radius:5px;overflow:hidden;"><div style="height:100%;width:{{ b.width }};background:var(--db-slate);border-radius:5px;"></div></div>
+                <span style="flex:0 0 34px;font:500 11px var(--font-mono);color:var(--db-ink-muted);">{{ b.pct }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:12px 16px;border-top:1px solid var(--db-line);display:flex;align-items:center;gap:8px;background:#fff;">
+        <span style="font-size:13px;">🔒</span>
+        <span style="font:400 11px var(--font-sans);color:var(--db-ink-muted);line-height:1.4;">Governed by <b style="color:var(--db-ink-soft);">Unity Catalog</b> — every layer is a live table.</span>
+      </div>
+    </div>
+
+    </sc-if>
+
+    <!-- ---- MAP COLUMN ---- -->
+    <div style="position:relative;flex:1;min-width:0;{{ mapCss }}">
+      <div ref="{{ mapRef }}" style="position:absolute;inset:0;width:100%;height:100%;"></div>
+
+      <!-- left panel toggle handle -->
+      <button onClick="{{ toggleLeft }}" style="{{ leftToggleStyle }}">{{ leftToggleLabel }}</button>
+
+      <!-- loading veil -->
+      <sc-if value="{{ notReady }}" hint-placeholder-val="{{ true }}">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--db-oat-medium);z-index:700;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+            <div style="width:34px;height:34px;border:3px solid var(--db-gray-300);border-top-color:var(--db-lava);border-radius:50%;animation:cvpulse 0s, spin 1s linear infinite;"></div>
+            <span style="font:500 13px var(--font-sans);color:var(--db-ink-muted);">Loading geospatial layers…</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- map mini-legend (heat) -->
+      <sc-if value="{{ showHeatLegend }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:14px;bottom:14px;z-index:650;background:rgba(255,255,255,.92);backdrop-filter:blur(6px);border:1px solid var(--db-line);border-radius:10px;padding:9px 12px;box-shadow:var(--shadow-md);">
+          <div style="font:700 10px var(--font-sans);letter-spacing:.08em;text-transform:uppercase;color:var(--db-ink-muted);margin-bottom:6px;">Foot-traffic density</div>
+          <div style="width:150px;height:8px;border-radius:4px;background:linear-gradient(90deg,#FFE08A,#FF9E94,#FF5F46,#FF3621);"></div>
+          <div style="display:flex;justify-content:space-between;margin-top:3px;font:400 10px var(--font-mono);color:var(--db-ink-muted);"><span>low</span><span>high</span></div>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ showRight }}" hint-placeholder-val="{{ true }}">
+    <!-- ---- RIGHT RAIL : ASK GENIE ---- -->
+    <div style="flex:0 0 auto;width:392px;background:var(--db-oat-light);border-left:1px solid var(--db-line);display:flex;flex-direction:column;min-height:0;z-index:600;{{ rightCss }}">
+
+      <!-- GENIE -->
+      <div style="display:flex;flex-direction:column;min-height:0;flex:1;background:#fff;{{ genieCss }}">
+        <div style="padding:12px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--db-line);background:linear-gradient(180deg,#fff,#fbfaf8);">
+          <img src="assets/genie-icon-full-color.svg" style="width:26px;height:26px;display:block;" alt="Genie">
+          <div style="flex:1;">
+            <div style="font:700 14px var(--font-sans);color:var(--db-navy);">Ask Genie</div>
+            <div style="font:500 11px var(--font-sans);color:var(--db-ink-muted);">Store Operations · <span style="color:var(--db-coral);">Labor</span></div>
+          </div>
+          <span style="font:400 10px var(--font-mono);color:var(--db-ink-muted);border:1px solid var(--db-line);border-radius:6px;padding:3px 7px;">space: store_ops</span>
+          <button onClick="{{ toggleRight }}" title="Hide Ask Genie" style="border:none;background:var(--db-oat-medium);color:var(--db-ink-soft);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:13px;line-height:1;flex-shrink:0;">✕</button>
+        </div>
+
+        <div ref="{{ genieRef }}" class="lf" style="flex:1;min-height:120px;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:14px;">
+          <sc-for list="{{ genie }}" as="g" hint-placeholder-count="2">
+            <div class="cv-msg" style="{{ g.wrapStyle }}">
+              <sc-if value="{{ g.isGenie }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+                  <img src="assets/genie-icon-full-color.svg" style="width:18px;height:18px;"><span style="font:700 11px var(--font-sans);color:var(--db-navy);">Genie</span>
+                </div>
+              </sc-if>
+              <div style="{{ g.bubbleStyle }}">
+                <div style="font:400 13px/1.5 var(--font-sans);color:{{ g.textColor }};">{{ g.text }}</div>
+
+                <sc-if value="{{ g.hasSql }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:9px;background:var(--db-navy);border-radius:8px;padding:9px 11px;overflow-x:auto;">
+                    <div style="font:600 9px var(--font-sans);letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:5px;">Generated SQL</div>
+                    <pre style="margin:0;font:400 11px/1.5 var(--font-mono);color:#d7e0e2;white-space:pre;">{{ g.sql }}</pre>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ g.hasTable }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:9px;border:1px solid var(--db-line);border-radius:8px;overflow:hidden;">
+                    <div style="display:flex;background:var(--db-oat-medium);padding:6px 9px;gap:6px;">
+                      <span style="flex:1.5;font:700 10px var(--font-sans);color:var(--db-ink-soft);text-transform:uppercase;letter-spacing:.04em;">{{ g.table.h0 }}</span>
+                      <sc-for list="{{ g.table.hrest }}" as="h" hint-placeholder-count="3">
+                        <span style="flex:1;text-align:right;font:700 10px var(--font-sans);color:var(--db-ink-soft);text-transform:uppercase;letter-spacing:.04em;">{{ h }}</span>
+                      </sc-for>
+                    </div>
+                    <sc-for list="{{ g.table.rows }}" as="r" hint-placeholder-count="3">
+                      <div style="{{ r.style }}">
+                        <span style="flex:1.5;font:600 12px var(--font-sans);color:var(--db-navy);display:flex;align-items:center;gap:5px;"><span style="flex:0 0 6px;height:6px;border-radius:50%;background:{{ r.dot }};"></span>{{ r.name }}</span>
+                        <sc-for list="{{ r.vals }}" as="v" hint-placeholder-count="3">
+                          <span style="flex:1;text-align:right;font:500 12px var(--font-mono);color:var(--db-ink);">{{ v }}</span>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ g.hasCallout }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:9px;display:flex;gap:8px;padding:9px 11px;border-radius:8px;background:{{ g.callout.bg }};border-left:3px solid {{ g.callout.bar }};">
+                    <span style="font-size:13px;">{{ g.callout.icon }}</span>
+                    <div style="font:500 12px/1.45 var(--font-sans);color:var(--db-ink);"><b style="color:{{ g.callout.bar }};">{{ g.callout.label }} </b>{{ g.callout.text }}</div>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </sc-for>
+          <sc-if value="{{ typing }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:7px;color:var(--db-ink-muted);font:500 12px var(--font-sans);"><img src="assets/genie-icon-full-color.svg" style="width:16px;height:16px;">Genie is analyzing…</div>
+          </sc-if>
+        </div>
+
+        <div style="padding:10px 12px;border-top:1px solid var(--db-line);background:var(--db-oat-light);">
+          <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;" class="lf">
+            <sc-for list="{{ chips }}" as="c" hint-placeholder-count="4">
+              <button onClick="{{ c.onClick }}" style="flex:0 0 auto;white-space:nowrap;border:1px solid var(--db-line);background:#fff;color:var(--db-navy);border-radius:999px;padding:6px 12px;font:500 11px var(--font-sans);cursor:pointer;">{{ c.label }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px;background:#fff;border:1px solid var(--db-gray-300);border-radius:10px;padding:6px 6px 6px 12px;">
+            <input value="{{ draft }}" onInput="{{ onDraft }}" placeholder="Ask about labor, staffing, foot traffic…" style="flex:1;border:none;outline:none;font:400 13px var(--font-sans);color:var(--db-ink);background:transparent;height:28px;"/>
+            <button onClick="{{ sendDraft }}" style="flex:0 0 auto;border:none;background:var(--db-lava);color:#fff;width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;">↑</button>
+          </div>
+          <div style="margin-top:6px;font:400 10px var(--font-sans);color:var(--db-ink-muted);text-align:center;">Preview UI — connect the Genie Conversations API to enable live answers.</div>
+        </div>
+      </div>
+    </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;basemap&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;voyager&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;pinMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;staffing&quot;,&quot;format&quot;,&quot;traffic&quot;],&quot;default&quot;:&quot;staffing&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    this.mapRef = React.createRef();
+    this.genieRef = React.createRef();
+    this.lg = {};
+    this.storeMarkers = {};
+    this.state = {
+      mode: props.defaultLayout || 'cockpit',
+      layers: { stores:true, traffic:true, trade:false, demo:false, competitors:false, pois:false, cross:false },
+      showLeft: true,
+      showRight: true,
+      selected: null,
+      inView: null,
+      genie: [],
+      typing: false,
+      draft: '',
+      ready: false,
+    };
+    this._prevMode = this.state.mode;
+    this._prevBasemap = props.basemap;
+    this._prevPinMode = props.pinMode;
+    this._prevGenieLen = 0;
+  }
+
+  // ---------- lifecycle ----------
+  async componentDidMount(){
+    try{
+      const d = await import('./clover-data.js');
+      this.data = d;
+      if(!window.L) await this.loadScript('https://unpkg.com/leaflet@1.9.4/dist/leaflet.js');
+      if(!window.L.heatLayer) await this.loadScript('https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js');
+      this.initMap();
+      this.seedGenie();
+      this.setState({ ready:true });
+      this.recompute();
+    }catch(e){ console.error('Clover init failed', e); }
+  }
+  componentDidUpdate(){
+    if(this._prevMode !== this.state.mode && this.map){
+      this._prevMode = this.state.mode;
+      setTimeout(()=>{ if(this.map){ this.map.invalidateSize(); this.recompute(); } }, 260);
+    }
+    if(this._prevBasemap !== this.props.basemap && this.tile){
+      this._prevBasemap = this.props.basemap;
+      this.tile.setUrl(this.tileUrl());
+    }
+    if(this._prevPinMode !== this.props.pinMode && this.map){
+      this._prevPinMode = this.props.pinMode;
+      this.rebuildStores();
+    }
+    if(this.state.genie.length !== this._prevGenieLen){
+      this._prevGenieLen = this.state.genie.length;
+      const el = this.genieRef.current;
+      if(el) setTimeout(()=>{ el.scrollTop = el.scrollHeight; }, 50);
+    }
+  }
+  loadScript(src){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+
+  // ---------- map ----------
+  tileUrl(){
+    const m = this.props.basemap || 'light';
+    if(m==='dark') return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+    if(m==='voyager') return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+    return 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+  }
+  pinColor(s){
+    const mode = this.props.pinMode || 'staffing';
+    if(mode==='format'){ return s.format==='Supercenter' ? '#1B5162' : s.format==='Neighborhood' ? '#FF5F46' : '#618794'; }
+    if(mode==='traffic'){
+      const max = Math.max(...this.data.locations.map(x=>x.recent_visits));
+      const t = s.recent_visits/max;
+      const stops = [[255,224,138],[255,158,148],[255,95,70],[255,54,33]];
+      const i = Math.min(stops.length-1, Math.floor(t*(stops.length-1)));
+      const c = stops[i];
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
+    return s.staffing_status==='understaffed' ? '#FF3621' : s.staffing_status==='overstaffed' ? '#FFAB00' : '#00A972';
+  }
+  initMap(){
+    const L = window.L;
+    const map = L.map(this.mapRef.current, { zoomControl:true, attributionControl:true, preferCanvas:true }).setView(this.data.META.center, this.data.META.zoom);
+    this.map = map;
+    this.tile = L.tileLayer(this.tileUrl(), { subdomains:'abcd', maxZoom:19, attribution:'&copy; OpenStreetMap &copy; CARTO' }).addTo(map);
+    map.zoomControl.setPosition('bottomright');
+
+    this.buildStores(); this.buildTraffic(); this.buildTrade(); this.buildDemo(); this.buildCompetitors(); this.buildPois(); this.buildCross();
+    this.applyLayers();
+    const grp = L.featureGroup(Object.values(this.storeMarkers));
+    map.fitBounds(grp.getBounds().pad(0.12));
+    map.on('moveend', ()=>this.recompute());
+  }
+  rebuildStores(){
+    if(this.lg.stores) this.map.removeLayer(this.lg.stores);
+    this.buildStores();
+    if(this.state.layers.stores) this.lg.stores.addTo(this.map);
+    if(this.state.selected) this.highlight(this.state.selected);
+  }
+  buildStores(){
+    const L = window.L; const grp = L.layerGroup(); this.storeMarkers = {};
+    for(const s of this.data.locations){
+      const r = 7 + (s.recent_visits/4200)*11;
+      const m = L.circleMarker([s.lat,s.lng], { radius:r, fillColor:this.pinColor(s), color:'#fff', weight:2, fillOpacity:0.92 });
+      m.bindTooltip(`${s.name} · ${s.staffing_status}`, { className:'cv-tt', direction:'top', offset:[0,-4] });
+      m.on('click', ()=>this.selectStore(s.store_id));
+      m._baseR = r;
+      grp.addLayer(m); this.storeMarkers[s.store_id]=m;
+    }
+    this.lg.stores = grp;
+  }
+  buildTraffic(){
+    const L = window.L;
+    const max = Math.max(...this.data.locations.map(x=>x.recent_visits));
+    const pts = this.data.locations.map(s=>[s.lat,s.lng, s.recent_visits/max]);
+    for(const o of this.data.visitor_origins){ pts.push([o.origin_lat,o.origin_lng, Math.min(0.6,(o.visitors/300))]); }
+    this.lg.traffic = L.heatLayer(pts, { radius:26, blur:20, maxZoom:14, minOpacity:0.4, max:1.0, gradient:{0.2:'#FFE08A',0.45:'#FF9E94',0.7:'#FF5F46',1:'#FF3621'} });
+  }
+  buildTrade(){
+    const L = window.L; const grp = L.layerGroup();
+    const byStore = {};
+    for(const o of this.data.visitor_origins){ (byStore[o.store_id]=byStore[o.store_id]||[]).push(o); }
+    for(const s of this.data.locations){
+      const os = (byStore[s.store_id]||[]).sort((a,b)=>b.visitors-a.visitors).slice(0,5);
+      for(const o of os){
+        grp.addLayer(L.polyline([[s.lat,s.lng],[o.origin_lat,o.origin_lng]], { color:'#FF5F46', weight:1+(o.visitors/120), opacity:0.35 }));
+        grp.addLayer(L.circleMarker([o.origin_lat,o.origin_lng], { radius:3, fillColor:'#FF5F46', color:'#fff', weight:1, fillOpacity:0.7 }));
+      }
+    }
+    this.lg.trade = grp;
+  }
+  buildDemo(){
+    const L = window.L; const grp = L.layerGroup();
+    const incomes = this.data.geo_zips.map(z=>z.median_income);
+    const lo = Math.min(...incomes), hi = Math.max(...incomes);
+    const scale = ['#E3EAEC','#A9C2C9','#7BA3AD','#4E7C8A','#1B5162'];
+    for(const z of this.data.geo_zips){
+      const t = (z.median_income-lo)/(hi-lo);
+      const col = scale[Math.min(scale.length-1, Math.floor(t*scale.length))];
+      grp.addLayer(L.circle([z.lat,z.lng], { radius:2400, fillColor:col, color:col, weight:1, fillOpacity:0.45 })
+        .bindTooltip(`ZIP ${z.zip} · $${(z.median_income/1000).toFixed(0)}k median`, { className:'cv-tt' }));
+    }
+    this.lg.demo = grp;
+  }
+  buildCompetitors(){
+    const L = window.L; const grp = L.layerGroup();
+    for(const p of this.data.nearby_pois){
+      if(p.category!=='competitor') continue;
+      const icon = L.divIcon({ className:'', iconSize:[16,16], html:`<div style="width:12px;height:12px;background:#98102A;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transform:rotate(45deg);"></div>` });
+      grp.addLayer(L.marker([p.lat,p.lng], { icon }).bindTooltip(`${p.name} · competitor · ${p.distance_mi} mi`, { className:'cv-tt' }));
+    }
+    this.lg.competitors = grp;
+  }
+  buildPois(){
+    const L = window.L; const grp = L.layerGroup();
+    const col = { complementary:'#618794', transit:'#1B3139' };
+    for(const p of this.data.nearby_pois){
+      if(p.category==='competitor') continue;
+      const c = col[p.category]||'#618794';
+      const icon = L.divIcon({ className:'', iconSize:[12,12], html:`<div style="width:10px;height:10px;border-radius:3px;background:${c};border:1.5px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.3);"></div>` });
+      grp.addLayer(L.marker([p.lat,p.lng], { icon }).bindTooltip(`${p.name} · ${p.category}`, { className:'cv-tt' }));
+    }
+    this.lg.pois = grp;
+  }
+  buildCross(){
+    const L = window.L; const grp = L.layerGroup();
+    const max = Math.max(...this.data.cross_shopping.map(c=>c.shared_visitors));
+    for(const c of this.data.cross_shopping){
+      grp.addLayer(L.polyline([[c.a_lat,c.a_lng],[c.b_lat,c.b_lng]], { color:'#618794', weight:1+(c.shared_visitors/max)*4, opacity:0.5, dashArray:'4 4' })
+        .bindTooltip(`${c.shared_visitors} shared visitors`, { className:'cv-tt' }));
+    }
+    this.lg.cross = grp;
+  }
+  applyLayers(){
+    const ly = this.state.layers;
+    const ORDER = ['demo','cross','trade','traffic','competitors','pois','stores']; // bottom -> top
+    for(const k of ORDER){
+      const on = ly[k]; const grp = this.lg[k];
+      if(!grp) continue;
+      const present = this.map.hasLayer(grp);
+      if(on && !present) grp.addTo(this.map);
+      if(!on && present) this.map.removeLayer(grp);
+    }
+    // keep pins & POIs above the heat/choropleth
+    if(ly.stores) Object.values(this.storeMarkers).forEach(m=>{ if(m.bringToFront) m.bringToFront(); });
+  }
+  toggleLayer(k){
+    const layers = { ...this.state.layers, [k]: !this.state.layers[k] };
+    this.setState({ layers }, ()=>this.applyLayers());
+    // setState callback unsupported in some DC runtimes -> apply next tick
+    setTimeout(()=>this.applyLayers(), 0);
+  }
+  selectStore(id){
+    this.setState({ selected:id });
+    const s = this.data.helpers.byId[id];
+    this.map.flyTo([s.lat,s.lng], Math.max(this.map.getZoom(), 12), { duration:0.6 });
+    this.highlight(id);
+  }
+  highlight(id){
+    for(const k of Object.keys(this.storeMarkers)){
+      const m = this.storeMarkers[k];
+      if(k===id) m.setStyle({ weight:4, color:'#1B3139' }).setRadius(m._baseR+3);
+      else m.setStyle({ weight:2, color:'#fff' }).setRadius(m._baseR);
+    }
+  }
+  toggleLeft(){ this.setState({ showLeft: !this.state.showLeft }); }
+  toggleRight(){ this.setState({ showRight: !this.state.showRight }); }
+  clearSel(){
+    this.setState({ selected:null });
+    for(const k of Object.keys(this.storeMarkers)){ const m=this.storeMarkers[k]; m.setStyle({weight:2,color:'#fff'}).setRadius(m._baseR); }
+  }
+
+  // ---------- analytics ----------
+  recompute(){
+    if(!this.map || !this.data) return;
+    const b = this.map.getBounds();
+    const inv = this.data.locations.filter(s=> b.contains([s.lat,s.lng]));
+    const ids = new Set(inv.map(s=>s.store_id));
+    if(inv.length===0){ this.setState({ inView:{ n:0 } }); return; }
+
+    const rows = this.data.foot_traffic_daily.filter(r=>ids.has(r.store_id));
+    // daily total visits series (29..0)
+    const series = []; const dwellSeries = []; const capSeries = [];
+    for(let d=29; d>=0; d--){
+      const day = rows.filter(r=>r.days_ago===d);
+      series.push(day.reduce((a,r)=>a+r.visits,0));
+      dwellSeries.push(day.length? day.reduce((a,r)=>a+r.avg_dwell_min,0)/day.length : 0);
+      capSeries.push(day.length? day.reduce((a,r)=>a+r.capture_rate,0)/day.length : 0);
+    }
+    const avg = (arr)=> arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+    const last7 = (arr)=> avg(arr.slice(-7));        // trailing week
+    const prev7 = (arr)=> avg(arr.slice(-14,-7));    // prior week — removes day-of-week bias
+    const dpct = (a,p)=> p? ((a-p)/p)*100 : 0;
+
+    const dailyTraffic = last7(series);
+    const trafficDelta = dpct(last7(series), prev7(series));
+    const visitors = this.data.visitor_origins.filter(o=>ids.has(o.store_id)).reduce((a,o)=>a+o.visitors,0);
+    const dwell = last7(dwellSeries);
+    const dwellDelta = dpct(last7(dwellSeries), prev7(dwellSeries));
+    const cap = last7(capSeries)*100;
+    const capDelta = dpct(last7(capSeries), prev7(capSeries));
+
+    // demographics weighted by base traffic
+    const bands = ['18\u201324','25\u201334','35\u201344','45\u201354','55\u201364','65+'];
+    const demRows = inv.map(s=> this.data.helpers.demoById[s.store_id]);
+    const wsum = inv.reduce((a,s)=>a+s.base_traffic,0);
+    const ageAgg = bands.map(band=> demRows.reduce((a,d,i)=> a + d.age[band]*inv[i].base_traffic, 0) / wsum);
+    const incAgg = demRows.reduce((a,d,i)=> a + d.median_income*inv[i].base_traffic, 0) / wsum;
+    const ageMed = demRows.reduce((a,d,i)=> a + d.median_age*inv[i].base_traffic, 0) / wsum;
+    const kidsAgg = demRows.reduce((a,d,i)=> a + d.pct_with_kids*inv[i].base_traffic, 0) / wsum;
+
+    this.setState({ inView:{
+      n: inv.length,
+      series, dailyTraffic, trafficDelta, visitors, dwell, dwellDelta, cap, capDelta,
+      bands, ageAgg, incAgg, ageMed, kidsAgg,
+    }});
+  }
+
+  // ---------- genie ----------
+  seedGenie(){
+    const ans = this.buildAnswer('understaffed');
+    this.setState({ genie:[
+      { role:'user', text:'Which stores are understaffed for tomorrow\u2019s forecast?' },
+      ans,
+    ]});
+  }
+  push(msg){ this.setState({ genie:[...this.state.genie, msg] }); }
+  sendChip(key, label){
+    this.push({ role:'user', text:label });
+    this.setState({ typing:true });
+    setTimeout(()=>{ this.setState({ typing:false }); this.push(this.buildAnswer(key)); }, 650);
+  }
+  onDraft(e){ this.setState({ draft:e.target.value }); }
+  sendDraft(){
+    const t = (this.state.draft||'').trim(); if(!t) return;
+    this.push({ role:'user', text:t });
+    this.setState({ draft:'', typing:true });
+    setTimeout(()=>{ this.setState({ typing:false }); this.push({ role:'genie',
+      text:'I\u2019m running in preview mode, so free-form answers aren\u2019t wired up yet. Connect the Genie Conversations API to query clover.retail_analytics live \u2014 or try one of the suggested labor prompts below.' }); }, 650);
+  }
+  askGenieStore(){
+    const s = this.data.helpers.byId[this.state.selected]; if(!s) return;
+    this.push({ role:'user', text:`How should I staff ${s.name}?` });
+    this.setState({ typing:true });
+    setTimeout(()=>{ this.setState({ typing:false }); this.push(this.buildAnswer('store', s)); }, 650);
+  }
+  fmt(n){ return Math.round(n).toLocaleString('en-US'); }
+  hrs(n){ return (n>0?'+':'') + n + 'h'; }
+  dot(s){ return s.staffing_status==='understaffed'?'#FF3621':s.staffing_status==='overstaffed'?'#FFAB00':'#00A972'; }
+
+  buildAnswer(key, store){
+    const D = this.data; const locs = D.locations;
+    if(key==='understaffed'){
+      const u = locs.filter(s=>s.staffing_status==='understaffed').sort((a,b)=>(b.ideal_hours-b.scheduled_hours)-(a.ideal_hours-a.scheduled_hours));
+      const need = u.reduce((a,s)=>a+(s.ideal_hours-s.scheduled_hours),0);
+      const over = locs.filter(s=>s.staffing_status==='overstaffed');
+      const slack = over.reduce((a,s)=>a+(s.scheduled_hours-s.ideal_hours),0);
+      return { role:'genie',
+        text:`${u.length} stores are projected to run understaffed against tomorrow\u2019s foot-traffic forecast (target 165 visits / labor-hour). Ranked by labor gap:`,
+        sql:"SELECT name, forecast_visits, scheduled_hours, ideal_hours,\n       ideal_hours - scheduled_hours AS add_hours\nFROM clover.retail_analytics.locations\nWHERE staffing_status = 'understaffed'\nORDER BY add_hours DESC\nLIMIT 5;",
+        table:{ h0:'Store', hrest:['Sched','Rec','Add'], rows: u.slice(0,5).map(s=>({ name:s.name.replace('Clover ',''), vals:[s.scheduled_hours+'h', s.ideal_hours+'h', this.hrs(s.ideal_hours-s.scheduled_hours)], dot:this.dot(s) })) },
+        callout:{ icon:'⚡', label:'Action:', text:`Cover ~${need} labor-hours tomorrow. ${over.length} overstaffed stores have ~${slack}h of slack you can reallocate.`, bg:'#FFF1EE', bar:'#FF3621' } };
+    }
+    if(key==='laborHours'){
+      const top = [...locs].sort((a,b)=>b.forecast_visits-a.forecast_visits).slice(0,5);
+      return { role:'genie',
+        text:'Recommended schedule for tomorrow at your 5 highest-volume stores, sized to the 165 visits/hour target:',
+        sql:"SELECT name, forecast_visits,\n       ROUND(forecast_visits/165) AS recommended_hours,\n       scheduled_hours\nFROM clover.retail_analytics.locations\nORDER BY forecast_visits DESC LIMIT 5;",
+        table:{ h0:'Store', hrest:['Forecast','Sched','Rec'], rows: top.map(s=>({ name:s.name.replace('Clover ',''), vals:[this.fmt(s.forecast_visits), s.scheduled_hours+'h', s.ideal_hours+'h'], dot:this.dot(s) })) },
+        callout:{ icon:'🕑', label:'Tip:', text:'Front-load hours into the 11a\u20132p and 5\u20138p peaks \u2014 those windows drive ~55% of daily visits.', bg:'#FFF8E8', bar:'#FFAB00' } };
+    }
+    if(key==='drops'){
+      const drops = locs.filter(s=>s.traffic_delta_pct < -8).sort((a,b)=>a.traffic_delta_pct-b.traffic_delta_pct);
+      return { role:'genie',
+        text:`${drops.length} stores show a sudden localized drop in foot traffic week-over-week \u2014 candidates for a real-time labor pivot:`,
+        sql:"SELECT name, traffic_delta_pct, anomaly_driver\nFROM clover.retail_analytics.v_traffic_anomalies\nWHERE traffic_delta_pct < -8\nORDER BY traffic_delta_pct ASC;",
+        table:{ h0:'Store', hrest:['Wk \u0394','Driver'], rows: drops.map(s=>({ name:s.name.replace('Clover ',''), vals:[s.traffic_delta_pct+'%', s.anomaly? s.anomaly.split(' ').slice(0,2).join(' '):'\u2014'], dot:this.dot(s) })) },
+        callout:{ icon:'📉', label:'Pivot:', text:'Flex non-essential hours down at these stores today and redeploy to peers trending up. Re-check at 2pm.', bg:'#FFF1EE', bar:'#FF3621' } };
+    }
+    if(key==='peaks'){
+      return { role:'genie',
+        text:'Aggregated coverage vs. demand by daypart across all in-network stores (today). Two windows are short-staffed:',
+        sql:"SELECT daypart, demand_index, coverage_index\nFROM clover.retail_analytics.v_daypart_coverage\nORDER BY daypart;",
+        table:{ h0:'Daypart', hrest:['Demand','Coverage','Flag'], rows:[
+          { name:'Open\u201311a', vals:['Light','OK','\u2713'], dot:'#00A972' },
+          { name:'11a\u20132p', vals:['Heavy','-2 assoc','!'], dot:'#FF3621' },
+          { name:'2\u20135p', vals:['Mod','OK','\u2713'], dot:'#00A972' },
+          { name:'5\u20138p', vals:['Heavy','-3 assoc','!'], dot:'#FF3621' },
+          { name:'8p\u2013Close', vals:['Light','+1 over','~'], dot:'#FFAB00' },
+        ] },
+        callout:{ icon:'👥', label:'Gap:', text:'Lunch (11a\u20132p) and evening (5\u20138p) peaks are under-covered \u2014 shift 1 associate from the late window into each peak.', bg:'#FFF1EE', bar:'#FF3621' } };
+    }
+    if(key==='vsTraffic'){
+      const u = locs.filter(s=>s.staffing_status==='understaffed').length;
+      const o = locs.filter(s=>s.staffing_status==='overstaffed').length;
+      const ba = locs.filter(s=>s.staffing_status==='balanced').length;
+      const worst = [...locs].sort((a,b)=>Math.abs(b.labor_gap)-Math.abs(a.labor_gap)).slice(0,4);
+      return { role:'genie',
+        text:`Comparing scheduled labor to real foot traffic across ${locs.length} stores: ${u} understaffed, ${o} overstaffed, ${ba} balanced. The biggest mismatches:`,
+        sql:"SELECT name, scheduled_hours - ideal_hours AS gap_hours,\n       staffing_status\nFROM clover.retail_analytics.locations\nORDER BY ABS(scheduled_hours - ideal_hours) DESC LIMIT 4;",
+        table:{ h0:'Store', hrest:['Gap','Status'], rows: worst.map(s=>({ name:s.name.replace('Clover ',''), vals:[this.hrs(s.labor_gap), s.staffing_status.slice(0,4)], dot:this.dot(s) })) },
+        callout:{ icon:'⚖️', label:'Net:', text:'Rebalancing over- to under-staffed stores closes most gaps with zero net labor-hour change.', bg:'#EAF6F1', bar:'#00A972' } };
+    }
+    if(key==='store' && store){
+      const add = store.ideal_hours - store.scheduled_hours;
+      const tone = store.staffing_status==='understaffed';
+      return { role:'genie',
+        text:`${store.name} is ${store.format.toLowerCase()} format, currently ${store.staffing_status}. Forecast is ${this.fmt(store.forecast_visits)} visits tomorrow; it\u2019s scheduled for ${store.scheduled_hours}h vs. a recommended ${store.ideal_hours}h.`,
+        table:{ h0:'Metric', hrest:['Value'], rows:[
+          { name:'Forecast visits', vals:[this.fmt(store.forecast_visits)], dot:this.dot(store) },
+          { name:'Scheduled', vals:[store.scheduled_hours+'h'], dot:'#618794' },
+          { name:'Recommended', vals:[store.ideal_hours+'h'], dot:'#1B5162' },
+          { name:'Traffic \u0394 (wk)', vals:[store.traffic_delta_pct+'%'], dot: store.traffic_delta_pct<0?'#FF3621':'#00A972' },
+        ] },
+        callout:{ icon: tone?'⚡':'✓', label: tone?'Add '+add+'h:':'Looks good:', text: tone? `Add ${add} labor-hours, weighted to the 5\u20138p peak.${store.anomaly?' Note: '+store.anomaly+'.':''}` : 'Coverage matches forecast \u2014 hold the current schedule.', bg: tone?'#FFF1EE':'#EAF6F1', bar: tone?'#FF3621':'#00A972' } };
+    }
+    return { role:'genie', text:'Let me look into that.' };
+  }
+
+  // ---------- render ----------
+  renderVals(){
+    const st = this.state; const mode = st.mode;
+    const meta = this.data ? this.data.META : { metro:'Chicago, IL Metro', date_window:'Trailing 30 days', catalog:'clover.retail_analytics', refreshed:'2026-06-23 06:00 CT' };
+
+    // map-first layout — panels are floating glass overlays that can be shown/hidden
+    const glass = 'position:absolute;top:14px;bottom:14px;background:rgba(255,255,255,.93);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.7);border-radius:14px;box-shadow:var(--shadow-lg);';
+    const leftCss = glass + 'left:14px;width:336px;border-right:1px solid rgba(255,255,255,.7);';
+    const rightCss = glass + 'right:14px;width:384px;border-left:1px solid rgba(255,255,255,.7);';
+    const mapCss='', anaCss='', genieCss='';
+    const showLeft = st.showLeft, showRight = st.showRight;
+
+    // top-bar Ask Genie toggle (red)
+    const genieBtnStyle = 'display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 13px;border-radius:8px;font:700 12px var(--font-sans);cursor:pointer;white-space:nowrap;flex-shrink:0;' +
+      (showRight ? 'background:var(--db-lava);color:#fff;border:1px solid var(--db-lava);'
+                 : 'background:transparent;color:#fff;border:1px solid var(--db-lava);');
+
+    // left panel toggle handle (sits on the left edge)
+    const handleBase = 'position:absolute;top:14px;z-index:701;display:inline-flex;align-items:center;gap:7px;height:34px;white-space:nowrap;border-radius:9px;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border:1px solid var(--db-line);box-shadow:var(--shadow-md);color:var(--db-navy);font:600 12px var(--font-sans);cursor:pointer;';
+    const leftToggleStyle = handleBase + (showLeft ? 'left:360px;padding:0 12px;' : 'left:14px;padding:0 13px;');
+    const leftToggleLabel = showLeft ? '‹ Hide' : '☰ Layers & data';
+
+    // layers
+    const defs = [
+      { key:'stores', name:'Store locations', table:'locations', icon:'📍', iconBg:'#FFEDEA' },
+      { key:'traffic', name:'Foot traffic heatmap', table:'foot_traffic_daily', icon:'🔥', iconBg:'#FFF3E6' },
+      { key:'trade', name:'Trade areas', table:'visitor_origins', icon:'🧭', iconBg:'#FFEDEA' },
+      { key:'demo', name:'Demographics', table:'visitor_demographics · geo_zips', icon:'🏘️', iconBg:'#E9F1F3' },
+      { key:'competitors', name:'Competitors', table:'nearby_pois', icon:'🎯', iconBg:'#F6E4E7' },
+      { key:'pois', name:'Nearby POIs', table:'nearby_pois', icon:'🏬', iconBg:'#EEF1F4' },
+      { key:'cross', name:'Cross-shopping', table:'cross_shopping', icon:'🔗', iconBg:'#EEF1F4' },
+    ];
+    const pinMode = this.props.pinMode || 'staffing';
+    const swatches = pinMode==='staffing'
+      ? [{color:'#FF3621',label:'Understaffed'},{color:'#FFAB00',label:'Overstaffed'},{color:'#00A972',label:'Balanced'}]
+      : pinMode==='format'
+      ? [{color:'#1B5162',label:'Supercenter'},{color:'#FF5F46',label:'Neighborhood'},{color:'#618794',label:'Express'}]
+      : [{color:'#FF3621',label:'Sized & shaded by recent visits'}];
+    const layers = defs.map(d=>{
+      const active = st.layers[d.key];
+      const showLegend = active && (d.key==='stores' || d.key==='demo');
+      return { ...d, active, showLegend,
+        isStores: d.key==='stores', isDemo: d.key==='demo', swatches,
+        onToggle:()=>this.toggleLayer(d.key),
+        rowStyle:`display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;cursor:pointer;transition:background .12s;${active?'background:var(--db-oat-light);':'background:transparent;'}`,
+        switchTrack:`flex:0 0 34px;width:34px;height:20px;border-radius:999px;padding:2px;display:flex;${active?'background:var(--db-lava);justify-content:flex-end;':'background:var(--db-gray-300);justify-content:flex-start;'}transition:all .15s;`,
+        switchKnob:'width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);',
+      };
+    });
+    const activeCount = defs.filter(d=>st.layers[d.key]).length;
+
+    // analytics
+    const iv = st.inView;
+    let inViewLabel='Pan or zoom the map', kpis=[], trendLine='', trendArea='', demoBars=[], demoIncome='—', demoAge='—', demoKids='—';
+    if(iv && iv.n>0){
+      inViewLabel = `${iv.n} store${iv.n>1?'s':''} in view`;
+      const arrow=(d)=> d>0.5?'▲':d<-0.5?'▼':'�—';
+      const col=(d,good)=> Math.abs(d)<0.5?'var(--db-ink-muted)':(good?(d>0?'var(--db-green)':'var(--db-lava)'):(d>0?'var(--db-lava)':'var(--db-green)'));
+      kpis = [
+        { label:'Daily foot traffic', value:this.fmt(iv.dailyTraffic), arrow:arrow(iv.trafficDelta), delta:Math.abs(iv.trafficDelta).toFixed(1)+'%', deltaNote:'vs last wk', deltaColor:col(iv.trafficDelta,true) },
+        { label:'Trade-area visitors', value:this.fmt(iv.visitors), arrow:arrow(iv.trafficDelta), delta:Math.abs(iv.trafficDelta*0.8).toFixed(1)+'%', deltaNote:'reach', deltaColor:col(iv.trafficDelta,true) },
+        { label:'Avg dwell', value:iv.dwell.toFixed(0)+'m', arrow:arrow(iv.dwellDelta), delta:Math.abs(iv.dwellDelta).toFixed(1)+'%', deltaNote:'', deltaColor:col(iv.dwellDelta,true) },
+        { label:'Capture rate', value:iv.cap.toFixed(1)+'%', arrow:arrow(iv.capDelta), delta:Math.abs(iv.capDelta).toFixed(1)+'%', deltaNote:'', deltaColor:col(iv.capDelta,true) },
+      ];
+      // trend paths
+      const W=320,H=84, s=iv.series; const mn=Math.min(...s), mx=Math.max(...s); const rng=(mx-mn)||1;
+      const pts = s.map((v,i)=>[ (i/(s.length-1))*W, H - ((v-mn)/rng)*(H-8) - 2 ]);
+      trendLine = 'M' + pts.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' L');
+      trendArea = trendLine + ` L${W},${H} L0,${H} Z`;
+      demoBars = iv.bands.map((band,i)=>({ band, pct:iv.ageAgg[i].toFixed(0)+'%', width:Math.min(100,iv.ageAgg[i]*3.4).toFixed(0)+'%' }));
+      demoIncome = '$'+(iv.incAgg/1000).toFixed(0)+'k';
+      demoAge = iv.ageMed.toFixed(0);
+      demoKids = iv.kidsAgg.toFixed(0)+'%';
+    } else if(iv && iv.n===0){
+      inViewLabel = 'No stores in view — zoom out';
+    }
+
+    // selected detail
+    let hasSelected=false, sel=null;
+    if(st.selected && this.data){
+      const s = this.data.helpers.byId[st.selected]; hasSelected=true;
+      const sc = s.staffing_status==='understaffed'?'var(--db-lava)':s.staffing_status==='overstaffed'?'var(--db-amber)':'var(--db-green)';
+      sel = { name:s.name, format:s.format, zip:s.zip, sqft:this.fmt(s.sqft), status:s.staffing_status, statusColor:sc,
+        dot:this.dot(s), gapLabel:this.hrs(s.labor_gap), deltaLabel:(s.traffic_delta_pct>0?'+':'')+s.traffic_delta_pct+'%',
+        deltaColor:s.traffic_delta_pct<0?'var(--db-lava)':'var(--db-green)', recLabel:s.ideal_hours+'h' };
+    }
+
+    // genie
+    const genie = st.genie.map(g=>{
+      const isGenie = g.role==='genie';
+      return { ...g, isGenie,
+        wrapStyle: isGenie? 'align-self:stretch;max-width:100%;' : 'align-self:flex-end;max-width:88%;',
+        bubbleStyle: isGenie? 'background:var(--db-oat-light);border:1px solid var(--db-line);border-radius:4px 12px 12px 12px;padding:11px 13px;' : 'background:var(--db-navy);border-radius:12px 12px 4px 12px;padding:9px 13px;',
+        textColor: isGenie? 'var(--db-ink)' : '#fff',
+        hasSql: !!g.sql, hasTable: !!g.table, hasCallout: !!g.callout,
+        table: g.table ? { ...g.table, rows: g.table.rows.map((r,i)=>({ ...r, style:`display:flex;gap:6px;align-items:center;padding:7px 9px;${i%2? 'background:#fff;':'background:#faf9f7;'}` })) } : null,
+      };
+    });
+    const chips = [
+      { key:'laborHours', label:'Suggest labor hours' },
+      { key:'drops', label:'Sudden traffic drops' },
+      { key:'peaks', label:'Peak-hour gaps' },
+      { key:'vsTraffic', label:'Staffing vs. foot traffic' },
+    ].map(c=>({ ...c, onClick:()=>this.sendChip(c.key, c.label) }));
+
+    return {
+      meta, leftCss, rightCss, mapCss, anaCss, genieCss,
+      showLeft, showRight, toggleLeft:()=>this.toggleLeft(), toggleRight:()=>this.toggleRight(),
+      genieBtnStyle, leftToggleStyle, leftToggleLabel,
+      mapRef:this.mapRef, genieRef:this.genieRef,
+      notReady: !st.ready, showHeatLegend: st.ready && st.layers.traffic,
+      layers, activeCount,
+      inViewLabel, kpis, trendLine, trendArea, demoBars, demoIncome, demoAge, demoKids,
+      hasSelected, sel, clearSel:()=>this.clearSel(), askGenieStore:()=>this.askGenieStore(),
+      genie, chips, typing:st.typing, draft:st.draft, onDraft:(e)=>this.onDraft(e), sendDraft:()=>this.sendDraft(),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+/* ============================================================
+   DATABRICKS DESIGN SYSTEM - colors_and_type.css
+   Source of truth: Databricks Corporate Slide Template (2021+)
+   theme3 brand palette + DM Sans / DM Mono / Barlow type system.
+   NOTE for the port: the self-hosted @font-face rules below point at
+   fonts/*.ttf that are NOT bundled. In the app, replace the @font-face
+   block with Google Fonts imports for DM Sans and DM Mono:
+     @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@300;400;500&display=swap');
+   Keep all the :root custom properties exactly as-is.
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap');
+
+/* DM Sans - self-hosted (replace with Google Fonts in the app) */
+@font-face { font-family:'DM Sans'; font-weight:400; font-style:normal; font-display:swap; src:url('fonts/dm-sans-regular.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:400; font-style:italic;  font-display:swap; src:url('fonts/dm-sans-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:500; font-style:normal; font-display:swap; src:url('fonts/dm-sans-medium.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:500; font-style:italic;  font-display:swap; src:url('fonts/dm-sans-medium-italic.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:700; font-style:normal; font-display:swap; src:url('fonts/dm-sans-bold.ttf') format('truetype'); }
+@font-face { font-family:'DM Sans'; font-weight:700; font-style:italic;  font-display:swap; src:url('fonts/dm-sans-bold-italic.ttf') format('truetype'); }
+
+/* DM Mono - self-hosted (replace with Google Fonts in the app) */
+@font-face { font-family:'DM Mono'; font-weight:300; font-style:normal; font-display:swap; src:url('fonts/dm-mono-light.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:400; font-style:normal; font-display:swap; src:url('fonts/dm-mono-regular.ttf') format('truetype'); }
+@font-face { font-family:'DM Mono'; font-weight:500; font-style:normal; font-display:swap; src:url('fonts/dm-mono-medium.ttf') format('truetype'); }
+
+:root {
+  /* ============ CORE BRAND COLORS ============ */
+  --db-navy:        #1B3139;
+  --db-ink-deep:    #0B2026;
+  --db-navy-700:    #1B5162;
+  --db-lava:        #FF3621;
+  --db-coral:       #FF5F46;
+  --db-oat-light:   #F9F7F4;
+  --db-oat-medium:  #EEEDE9;
+  --db-white:       #FFFFFF;
+
+  /* ============ INK / TEXT ============ */
+  --db-ink:         #3A3838;
+  --db-ink-soft:    #5A5755;
+  --db-ink-muted:   #8A8580;
+  --db-black:       #000000;
+
+  /* ============ EXTENDED ACCENTS ============ */
+  --db-green:       #00A972;
+  --db-green-700:   #00875C;
+  --db-amber:       #FFAB00;
+  --db-gold:        #FCBA33;
+  --db-maroon:      #98102A;
+  --db-red:         #BD2B26;
+  --db-slate:       #618794;
+  --db-blue:        #4359FF;
+  --db-teal:        #42BA91;
+
+  /* ============ CHART / DATA-VIZ TINTS ============ */
+  --db-tint-coral:  #FF9E94;
+  --db-tint-rose:   #FABFBA;
+  --db-tint-gold:   #FFCC66;
+  --db-tint-amber:  #FFDB96;
+  --db-tint-green:  #9ED6C4;
+  --db-tint-teal:   #70C4AB;
+  --db-tint-mauve:  #BF7080;
+  --db-tint-pink:   #D69EA8;
+
+  /* ============ NEUTRAL / UI GRAYS ============ */
+  --db-gray-100:    #F8F9FA;
+  --db-gray-200:    #EEEDE9;
+  --db-gray-300:    #C4CCD6;
+  --db-gray-400:    #A0ACBE;
+  --db-line:        #E4E2DD;
+
+  /* ============ SURFACES ============ */
+  --db-bg:          var(--db-oat-light);
+  --db-surface:     #FFFFFF;
+  --db-surface-alt: var(--db-oat-medium);
+  --db-surface-dark:var(--db-navy);
+
+  /* ============ TYPE FAMILIES ============ */
+  --font-sans:    'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-display: 'Barlow', 'DM Sans', system-ui, sans-serif;
+  --font-mono:    'DM Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  /* ============ RADII ============ */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-pill: 999px;
+
+  /* ============ SHADOWS ============ */
+  --shadow-sm: 0 1px 2px rgba(27, 49, 57, 0.06), 0 1px 3px rgba(27, 49, 57, 0.08);
+  --shadow-md: 0 2px 6px rgba(27, 49, 57, 0.08), 0 8px 20px rgba(27, 49, 57, 0.08);
+  --shadow-lg: 0 8px 24px rgba(27, 49, 57, 0.10), 0 24px 48px rgba(27, 49, 57, 0.10);
+}
