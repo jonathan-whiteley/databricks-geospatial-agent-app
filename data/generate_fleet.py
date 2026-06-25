@@ -10,6 +10,10 @@ import math
 from datetime import date, timedelta
 from data.config import CLOVER_SEED, TARGET_VISITS_PER_HOUR
 
+# Fixed reference date used as the "today" anchor for all date calculations.
+# Never use datetime.now() or wall-clock time; keep the generator deterministic.
+REFERENCE_DATE = date(2026, 6, 24)
+
 # Greater Boston neighborhoods with approximate lat/lon centers.
 _NEIGHBORHOODS = [
     ("Back Bay",       "Boston",     "Greater Boston",  42.3503, -71.0810),
@@ -64,7 +68,7 @@ def make_fleet(real_stores: list[dict], n_synth: int = 12) -> list[dict]:
 
         # Open date: 1-8 years ago, deterministic.
         days_ago = rng.randint(365, 365 * 8)
-        open_date = (date(2026, 6, 24) - timedelta(days=days_ago)).isoformat()
+        open_date = (REFERENCE_DATE - timedelta(days=days_ago)).isoformat()
 
         store = {
             "store_id":      f"clv_s{i + 1:02d}",
@@ -96,9 +100,11 @@ def make_daily_series(store: dict, days: int = 540) -> list[dict]:
     Weekend days receive a ~1.25x lift. Daypart splits sum exactly to visits.
     No negative values.
     """
-    rng = random.Random(CLOVER_SEED)
-    base = store.get("base_traffic", 1000)
     store_id = store["store_id"]
+    # Seed is store-specific so different stores produce different visit shapes,
+    # but repeated calls for the same store always produce identical output.
+    rng = random.Random(CLOVER_SEED + sum(ord(c) for c in store_id))
+    base = store.get("base_traffic", 1000)
 
     # Anchor to a fixed start date for determinism (independent of wall clock).
     start = date(2024, 12, 1)
@@ -146,8 +152,18 @@ def inject_drop(rows: list[dict], store_id: str, pct: float, last_n: int = 5) ->
     target = [r for r in rows if r["store_id"] == store_id]
     affected = target[-last_n:]
     for row in affected:
-        for key in ("visits", "unique_visitors", "visits_morning", "visits_afternoon", "visits_evening"):
-            row[key] = max(0, int(row[key] * (1.0 - pct)))
+        # Scale visits and unique_visitors independently.
+        row["visits"] = max(0, int(row["visits"] * (1.0 - pct)))
+        row["unique_visitors"] = max(0, int(row["unique_visitors"] * (1.0 - pct)))
+        # Recompute daypart split from the new visits count using the same
+        # split logic as make_daily_series so morning+afternoon+evening==visits.
+        v = row["visits"]
+        morning = int(v * _DAYPART_WEIGHTS[0])
+        evening = int(v * _DAYPART_WEIGHTS[2])
+        afternoon = v - morning - evening
+        row["visits_morning"] = morning
+        row["visits_afternoon"] = afternoon
+        row["visits_evening"] = evening
 
 
 def make_schedule(store: dict, forecast_visits: float) -> int:
