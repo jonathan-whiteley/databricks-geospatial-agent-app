@@ -177,7 +177,16 @@ def write_locations(fleet: list[dict]) -> None:
 
 # ── Step 4: read real bronze FTD rows and generate synthetic rows ──────────────
 
-def write_foot_traffic(real_stores: list[dict], synth_stores: list[dict]) -> None:
+def write_foot_traffic(
+    real_stores: list[dict],
+    synth_series_by_store: dict[str, list[dict]],
+) -> None:
+    """
+    Write gold.foot_traffic_daily.
+
+    Real store rows are copied from bronze.
+    Synthetic store rows come from synth_series_by_store (pre-built, drop-applied).
+    """
     exec_sql(f"""
         CREATE OR REPLACE TABLE {GOLD}.foot_traffic_daily (
             store_id         STRING  NOT NULL,
@@ -236,11 +245,10 @@ def write_foot_traffic(real_stores: list[dict], synth_stores: list[dict]) -> Non
             "capture_rate":     float(r["capture_rate"]) if r["capture_rate"] is not None else None,
         })
 
-    # Synthetic store rows: generate via make_daily_series and compute days_ago.
+    # Synthetic store rows: use the pre-built, drop-applied series (no re-generation here).
     synth_gold_rows = []
-    for store in synth_stores:
-        daily = make_daily_series(store)
-        for r in daily:
+    for series in synth_series_by_store.values():
+        for r in series:
             visits = r["visits"] or 0
             unique_visitors = r["unique_visitors"] or 0
             capture_rate = (unique_visitors / visits) if visits else None
@@ -334,23 +342,33 @@ def main() -> None:
     # Write locations.
     write_locations(fleet)
 
-    # Generate synthetic daily series and inject anomalies into 2 stores.
-    synth_daily: list[dict] = []
+    # Generate synthetic daily series ONCE, keyed by store_id.
+    synth_series_by_store: dict[str, list[dict]] = {}
     for store in synth_fleet:
-        synth_daily.extend(make_daily_series(store))
+        synth_series_by_store[store["store_id"]] = make_daily_series(store)
 
     # Deterministic anomaly injection: always inject into synthetic stores at index 0 and 2.
-    inject_drop(synth_daily, synth_fleet[0]["store_id"], pct=0.40, last_n=5)
-    inject_drop(synth_daily, synth_fleet[2]["store_id"], pct=0.25, last_n=5)
+    # inject_drop mutates rows in-place; the series in synth_series_by_store are updated.
+    inject_drop(
+        [r for series in synth_series_by_store.values() for r in series],
+        synth_fleet[0]["store_id"],
+        pct=0.40,
+        last_n=5,
+    )
+    inject_drop(
+        [r for series in synth_series_by_store.values() for r in series],
+        synth_fleet[2]["store_id"],
+        pct=0.25,
+        last_n=5,
+    )
     print(f"[inject_drop] anomalies injected into {synth_fleet[0]['store_id']} and {synth_fleet[2]['store_id']}")
 
-    # Write foot traffic (real + synthetic).
-    write_foot_traffic(real_stores, synth_fleet)
+    # Write foot traffic (real from bronze + pre-built synthetic series with drops applied).
+    write_foot_traffic(real_stores, synth_series_by_store)
 
-    # Build combined daily list for schedule (real from bronze + synthetic generated).
-    # For scheduling, use only synthetic daily (real stores use bronze rows from the DB).
-    # We feed all_daily to write_labor_schedule for latest-visits lookup.
-    write_labor_schedule(fleet, synth_daily)
+    # Build flat synthetic daily list for labor schedule latest-visits lookup.
+    synth_daily_flat = [r for series in synth_series_by_store.values() for r in series]
+    write_labor_schedule(fleet, synth_daily_flat)
 
     print("=== Done ===")
 

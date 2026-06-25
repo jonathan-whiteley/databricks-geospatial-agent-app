@@ -11,10 +11,10 @@
 -- ---------------------------------------------------------------------------
 -- store_ops
 -- One row per store with staffing analysis and traffic trend delta.
--- traffic_delta_pct for clv_s01 and clv_s03 is overridden to reflect
--- the injected anomalies (-40% and -25% respectively). The gold table
--- did not capture those drops because inject_drop ran before write_foot_traffic
--- regenerated the series independently.
+-- traffic_delta_pct is computed uniformly for all stores from
+-- gold.foot_traffic_daily (trailing-7-day vs prior-7-day mean visits).
+-- The injected drops for clv_s01 (-40%) and clv_s03 (-25%) emerge from
+-- the data. No hardcoded overrides are needed.
 
 CREATE OR REPLACE VIEW clover_spatial_catalog.gold.store_ops AS
 WITH
@@ -101,13 +101,10 @@ SELECT
         ) - ls.scheduled_hours) <= -8  THEN 'overstaffed'
         ELSE 'balanced'
     END AS staffing_status,
-    -- Override delta for anomaly-injected stores to reflect the synthetic drops.
-    CASE loc.store_id
-        WHEN 'clv_s01' THEN -40.0
-        WHEN 'clv_s03' THEN -25.0
-        ELSE d.raw_delta_pct
-    END AS traffic_delta_pct,
-    -- anomaly_driver label: deterministic CASE keyed on store_id.
+    -- traffic_delta_pct computed uniformly for all stores from the data.
+    d.raw_delta_pct AS traffic_delta_pct,
+    -- anomaly_driver label: deterministic CASE keyed on store_id for known anomaly stores,
+    -- data-driven labels for all others.
     CASE
         WHEN loc.store_id = 'clv_s01' THEN 'traffic_drop_40pct'
         WHEN loc.store_id = 'clv_s03' THEN 'traffic_drop_25pct'
