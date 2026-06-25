@@ -86,19 +86,19 @@ SELECT
     loc.base_traffic,
     COALESCE(sf.forecast_visits, ls.forecast_visits, rv.recent_visits, loc.base_traffic) AS forecast_visits,
     ls.scheduled_hours,
-    CAST(ROUND(
+    ROUND(
         COALESCE(sf.forecast_visits, ls.forecast_visits, rv.recent_visits, loc.base_traffic) / 165.0
-    ) AS INT) AS ideal_hours,
-    CAST(ROUND(
+    ) AS ideal_hours,
+    ROUND(
         COALESCE(sf.forecast_visits, ls.forecast_visits, rv.recent_visits, loc.base_traffic) / 165.0
-    ) AS INT) - ls.scheduled_hours AS labor_gap,
+    ) - ls.scheduled_hours AS labor_gap,
     CASE
-        WHEN (CAST(ROUND(
+        WHEN (ROUND(
             COALESCE(sf.forecast_visits, ls.forecast_visits, rv.recent_visits, loc.base_traffic) / 165.0
-        ) AS INT) - ls.scheduled_hours) >= 8   THEN 'understaffed'
-        WHEN (CAST(ROUND(
+        ) - ls.scheduled_hours) >= 8   THEN 'understaffed'
+        WHEN (ROUND(
             COALESCE(sf.forecast_visits, ls.forecast_visits, rv.recent_visits, loc.base_traffic) / 165.0
-        ) AS INT) - ls.scheduled_hours) <= -8  THEN 'overstaffed'
+        ) - ls.scheduled_hours) <= -8  THEN 'overstaffed'
         ELSE 'balanced'
     END AS staffing_status,
     -- Override delta for anomaly-injected stores to reflect the synthetic drops.
@@ -273,15 +273,8 @@ WHERE cs.dest_lat IS NOT NULL
 CREATE OR REPLACE VIEW clover_spatial_catalog.gold.v_nearby_pois AS
 SELECT
     name,
-    category,
+    COALESCE(category, poi_type) AS category,
     lat,
-    lon,
-    ROUND(distance_km * 0.621371, 3) AS distance_mi,
-    CASE
-        WHEN poi_type = 'anchor'     THEN 'Anchor'
-        WHEN poi_type = 'competitor' THEN 'Competitor'
-        WHEN poi_type = 'complement' THEN 'Complement'
-        WHEN poi_type = 'transit'    THEN 'Transit'
-        ELSE poi_type
-    END AS poi_type
+    lon AS lng,
+    ROUND(distance_km * 0.621371, 3) AS distance_mi
 FROM clover_spatial_catalog.bronze.nearby_pois;
