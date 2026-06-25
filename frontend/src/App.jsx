@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { getBootstrap, getLayer } from './api.js';
 import { initMap, toggleLayer as mapToggleLayer, selectStore as mapSelectStore, clearStore as mapClearStore, destroyMap } from './map.js';
+import GeniePanel from './geniePanel.jsx';
 
 // ---------- Static layer definitions (UI metadata only) ----------
 
@@ -14,38 +15,6 @@ const LAYER_DEFS = [
   { key: 'cross',       name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
 ];
 
-const GENIE_SEED = [
-  { role: 'user', text: "Which stores are understaffed for tomorrow's forecast?" },
-  {
-    role: 'genie',
-    text: "4 stores are projected to run understaffed against tomorrow's foot-traffic forecast (target 165 visits / labor-hour). Ranked by labor gap:",
-    sql: "SELECT name, forecast_visits, scheduled_hours, ideal_hours,\n       ideal_hours - scheduled_hours AS add_hours\nFROM clover.retail_analytics.locations\nWHERE staffing_status = 'understaffed'\nORDER BY add_hours DESC\nLIMIT 5;",
-    table: {
-      h0: 'Store',
-      hrest: ['Sched', 'Rec', 'Add'],
-      rows: [
-        { name: 'Wicker Park',  vals: ['32h', '40h', '+8h'], dot: '#FF3621' },
-        { name: 'Logan Square', vals: ['28h', '34h', '+6h'], dot: '#FF3621' },
-        { name: 'Pilsen',       vals: ['30h', '35h', '+5h'], dot: '#FF3621' },
-        { name: 'Hyde Park',    vals: ['26h', '30h', '+4h'], dot: '#FF3621' },
-      ],
-    },
-    callout: {
-      icon: '⚡',
-      label: 'Action:',
-      text: 'Cover ~23 labor-hours tomorrow. 2 overstaffed stores have ~14h of slack you can reallocate.',
-      bg: '#FFF1EE',
-      bar: '#FF3621',
-    },
-  },
-];
-
-const CHIPS = [
-  { key: 'laborHours', label: 'Suggest labor hours' },
-  { key: 'drops',      label: 'Sudden traffic drops' },
-  { key: 'peaks',      label: 'Peak-hour gaps' },
-  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic' },
-];
 
 // ---------- Helpers ----------
 
@@ -138,69 +107,10 @@ function KpiTile({ kpi }) {
   );
 }
 
-function GenieMessage({ msg }) {
-  const isGenie = msg.role === 'genie';
-  const wrapStyle = { alignSelf: isGenie ? 'stretch' : 'flex-end', maxWidth: isGenie ? '100%' : '88%' };
-  const bubbleStyle = isGenie
-    ? { background: 'var(--db-oat-light)', border: '1px solid var(--db-line)', borderRadius: '4px 12px 12px 12px', padding: '11px 13px' }
-    : { background: 'var(--db-navy)', borderRadius: '12px 12px 4px 12px', padding: '9px 13px' };
-  const textColor = isGenie ? 'var(--db-ink)' : '#fff';
-
-  return (
-    <div className="cv-msg" style={wrapStyle}>
-      {isGenie && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
-          <img src="/assets/genie-icon-full-color.svg" style={{ width: 18, height: 18 }} alt="" />
-          <span style={{ font: '700 11px var(--font-sans)', color: 'var(--db-navy)' }}>Genie</span>
-        </div>
-      )}
-      <div style={bubbleStyle}>
-        <div style={{ font: '400 13px/1.5 var(--font-sans)', color: textColor }}>{msg.text}</div>
-        {msg.sql && (
-          <div style={{ marginTop: 9, background: 'var(--db-navy)', borderRadius: 8, padding: '9px 11px', overflowX: 'auto' }}>
-            <div style={{ font: '600 9px var(--font-sans)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', marginBottom: 5 }}>Generated SQL</div>
-            <pre style={{ margin: 0, font: '400 11px/1.5 var(--font-mono)', color: '#d7e0e2', whiteSpace: 'pre' }}>{msg.sql}</pre>
-          </div>
-        )}
-        {msg.table && (
-          <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
-              <span style={{ flex: 1.5, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{msg.table.h0}</span>
-              {msg.table.hrest.map(h => (
-                <span key={h} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
-              ))}
-            </div>
-            {msg.table.rows.map((row, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 9px', background: i % 2 ? '#fff' : '#faf9f7' }}>
-                <span style={{ flex: 1.5, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ flex: '0 0 6px', height: 6, borderRadius: '50%', background: row.dot }}></span>
-                  {row.name}
-                </span>
-                {row.vals.map((v, j) => (
-                  <span key={j} style={{ flex: 1, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)' }}>{v}</span>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-        {msg.callout && (
-          <div style={{ marginTop: 9, display: 'flex', gap: 8, padding: '9px 11px', borderRadius: 8, background: msg.callout.bg, borderLeft: `3px solid ${msg.callout.bar}` }}>
-            <span style={{ fontSize: 13 }}>{msg.callout.icon}</span>
-            <div style={{ font: '500 12px/1.45 var(--font-sans)', color: 'var(--db-ink)' }}>
-              <b style={{ color: msg.callout.bar }}>{msg.callout.label} </b>{msg.callout.text}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ---------- Main App ----------
 
 export default function App() {
   const mapRef = useRef(null);
-  const genieRef = useRef(null);
   const mapInitialized = useRef(false);
 
   // Bootstrap / loading state
@@ -223,9 +133,8 @@ export default function App() {
   const [showLeft, setShowLeft] = useState(true);
   const [showRight, setShowRight] = useState(true);
 
-  // Genie chat
-  const [genie, setGenie] = useState(GENIE_SEED);
-  const [draft, setDraft] = useState('');
+  // Genie seed question from store drill-down; wrapped in object so same store re-click still fires
+  const [genieSeedQuestion, setGenieSeedQuestion] = useState(null);
 
   const activeCount = LAYER_DEFS.filter(d => layersOn[d.key]).length;
 
@@ -287,12 +196,6 @@ export default function App() {
     };
   }, []);
 
-  // Scroll Genie to bottom on new messages
-  useEffect(() => {
-    if (genieRef.current) {
-      setTimeout(() => { genieRef.current.scrollTop = genieRef.current.scrollHeight; }, 50);
-    }
-  }, [genie]);
 
   // ---------- Layer toggle ----------
   const toggleLayer = useCallback((key) => {
@@ -359,24 +262,6 @@ export default function App() {
     selStatusColor = sel.staffing_status === 'understaffed' ? 'var(--db-lava)'
       : sel.staffing_status === 'overstaffed' ? 'var(--db-amber)'
       : 'var(--db-green)';
-  }
-
-  // ---------- Genie ----------
-  function sendDraft() {
-    const t = draft.trim();
-    if (!t) return;
-    setGenie(prev => [...prev, { role: 'user', text: t }, {
-      role: 'genie',
-      text: "I'm running in preview mode, so free-form answers aren't wired up yet. Connect the Genie Conversations API to query clover.retail_analytics live - or try one of the suggested labor prompts below.",
-    }]);
-    setDraft('');
-  }
-
-  function sendChip(label) {
-    setGenie(prev => [...prev, { role: 'user', text: label }, {
-      role: 'genie',
-      text: "I'm running in preview mode. Connect the Genie Conversations API to get live answers from clover.retail_analytics.",
-    }]);
   }
 
   // ---------- Styles ----------
@@ -563,7 +448,10 @@ export default function App() {
                     </div>
                   </div>
                   <button
-                    onClick={() => { /* Task 11 will wire Genie ask */ }}
+                    onClick={() => {
+                      setGenieSeedQuestion({ q: `How should I staff ${sel.name}?`, ts: Date.now() });
+                      setShowRight(true);
+                    }}
                     style={{ width: '100%', border: 'none', borderTop: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-lava)', padding: 9, cursor: 'pointer', font: '600 12px var(--font-sans)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                   >
                     {'✨'} Ask Genie how to staff this store
@@ -670,50 +558,10 @@ export default function App() {
         {/* RIGHT RAIL: Ask Genie */}
         {showRight && (
           <div style={rightPanelStyle}>
-            <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
-
-              {/* Genie header */}
-              <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--db-line)', background: 'linear-gradient(180deg,#fff,#fbfaf8)' }}>
-                <img src="/assets/genie-icon-full-color.svg" style={{ width: 26, height: 26, display: 'block' }} alt="Genie" />
-                <div style={{ flex: 1 }}>
-                  <div style={{ font: '700 14px var(--font-sans)', color: 'var(--db-navy)' }}>Ask Genie</div>
-                  <div style={{ font: '500 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Store Operations - <span style={{ color: 'var(--db-coral)' }}>Labor</span></div>
-                </div>
-                <span style={{ font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)', border: '1px solid var(--db-line)', borderRadius: 6, padding: '3px 7px' }}>space: store_ops</span>
-                <button onClick={() => setShowRight(false)} title="Hide Ask Genie" style={{ border: 'none', background: 'var(--db-oat-medium)', color: 'var(--db-ink-soft)', width: 24, height: 24, borderRadius: 7, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>&#x2715;</button>
-              </div>
-
-              {/* Message area */}
-              <div ref={genieRef} className="lf" style={{ flex: 1, minHeight: 120, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {genie.map((msg, i) => <GenieMessage key={i} msg={msg} />)}
-              </div>
-
-              {/* Input area */}
-              <div style={{ padding: '10px 12px', borderTop: '1px solid var(--db-line)', background: 'var(--db-oat-light)' }}>
-                <div className="lf" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8 }}>
-                  {CHIPS.map(c => (
-                    <button key={c.key} onClick={() => sendChip(c.label)} style={{ flex: '0 0 auto', whiteSpace: 'nowrap', border: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-navy)', borderRadius: 999, padding: '6px 12px', font: '500 11px var(--font-sans)', cursor: 'pointer' }}>
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, background: '#fff', border: '1px solid var(--db-gray-300)', borderRadius: 10, padding: '6px 6px 6px 12px' }}>
-                  <input
-                    value={draft}
-                    onChange={e => setDraft(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && sendDraft()}
-                    placeholder="Ask about labor, staffing, foot traffic..."
-                    style={{ flex: 1, border: 'none', outline: 'none', font: '400 13px var(--font-sans)', color: 'var(--db-ink)', background: 'transparent', height: 28 }}
-                  />
-                  <button onClick={sendDraft} style={{ flex: '0 0 auto', border: 'none', background: 'var(--db-lava)', color: '#fff', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {'↑'}
-                  </button>
-                </div>
-                <div style={{ marginTop: 6, font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textAlign: 'center' }}>
-                  Preview UI - connect the Genie Conversations API to enable live answers.
-                </div>
-              </div>
-            </div>
+            <GeniePanel
+              onClose={() => setShowRight(false)}
+              seedQuestion={genieSeedQuestion}
+            />
           </div>
         )}
       </div>

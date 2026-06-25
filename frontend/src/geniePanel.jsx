@@ -1,0 +1,293 @@
+/**
+ * geniePanel.jsx
+ * Live Ask Genie right-rail panel.
+ * Calls POST /api/genie/ask and POST /api/action; threads conversation_id
+ * across turns; renders text, navy SQL block, dynamic results table,
+ * and lightning callout per the clover-app design spec.
+ */
+
+import { useRef, useState, useEffect } from 'react';
+import { postGenieAsk, postAction } from './api.js';
+
+// Default question auto-run on mount
+const DEFAULT_QUESTION = 'Which stores are understaffed for tomorrow?';
+
+// Chip definitions: label + natural-language question sent to Genie
+const CHIPS = [
+  { key: 'laborHours', label: 'Suggest labor hours',        question: 'What labor hours should I schedule at my busiest stores tomorrow?' },
+  { key: 'drops',      label: 'Sudden traffic drops',       question: 'Which stores have sudden drops in foot traffic this week?' },
+  { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Where are the peak-hour staffing gaps across all stores?' },
+  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'How does scheduled staffing compare to actual foot traffic across stores?' },
+];
+
+// Max table rows to render
+const MAX_ROWS = 8;
+
+// ---------- Sub-components ----------
+
+function TypingIndicator() {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--db-ink-muted)', font: '500 12px var(--font-sans)' }}>
+      <img src="/assets/genie-icon-full-color.svg" style={{ width: 16, height: 16 }} alt="" />
+      Genie is analyzing...
+    </div>
+  );
+}
+
+function GenieMessage({ msg }) {
+  const isGenie = msg.role === 'genie';
+  const wrapStyle = { alignSelf: isGenie ? 'stretch' : 'flex-end', maxWidth: isGenie ? '100%' : '88%' };
+  const bubbleStyle = isGenie
+    ? { background: 'var(--db-oat-light)', border: '1px solid var(--db-line)', borderRadius: '4px 12px 12px 12px', padding: '11px 13px' }
+    : { background: 'var(--db-navy)', borderRadius: '12px 12px 4px 12px', padding: '9px 13px' };
+  const textColor = isGenie ? 'var(--db-ink)' : '#fff';
+
+  // Normalize dynamic columns+rows into the static table shape the markup expects.
+  // msg.table may be:
+  //   (a) already shaped: { h0, hrest, rows }  (from static GENIE_SEED or post-process)
+  //   (b) dynamic from live API: built in sendMessage from { columns, rows }
+  const table = msg.table || null;
+
+  return (
+    <div className="cv-msg" style={wrapStyle}>
+      {isGenie && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 6 }}>
+          <img src="/assets/genie-icon-full-color.svg" style={{ width: 18, height: 18 }} alt="" />
+          <span style={{ font: '700 11px var(--font-sans)', color: 'var(--db-navy)' }}>Genie</span>
+        </div>
+      )}
+      <div style={bubbleStyle}>
+        <div style={{ font: '400 13px/1.5 var(--font-sans)', color: textColor }}>{msg.text}</div>
+
+        {/* Navy SQL block */}
+        {msg.sql && (
+          <div style={{ marginTop: 9, background: 'var(--db-navy)', borderRadius: 8, padding: '9px 11px', overflowX: 'auto' }}>
+            <div style={{ font: '600 9px var(--font-sans)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', marginBottom: 5 }}>Generated SQL</div>
+            <pre style={{ margin: 0, font: '400 11px/1.5 var(--font-mono)', color: '#d7e0e2', whiteSpace: 'pre' }}>{msg.sql}</pre>
+          </div>
+        )}
+
+        {/* Results table */}
+        {table && (
+          <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
+              <span style={{ flex: 1.5, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
+              {table.hrest.map(h => (
+                <span key={h} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
+              ))}
+            </div>
+            {table.rows.map((row, i) => (
+              <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 9px', background: i % 2 ? '#fff' : '#faf9f7' }}>
+                <span style={{ flex: 1.5, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {row.dot && <span style={{ flex: '0 0 6px', height: 6, borderRadius: '50%', background: row.dot, display: 'inline-block' }}></span>}
+                  {row.name}
+                </span>
+                {row.vals.map((v, j) => (
+                  <span key={j} style={{ flex: 1, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)' }}>{v}</span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Lightning callout */}
+        {msg.callout && (
+          <div style={{ marginTop: 9, display: 'flex', gap: 8, padding: '9px 11px', borderRadius: 8, background: msg.callout.bg || '#FFF1EE', borderLeft: `3px solid ${msg.callout.bar || '#FF3621'}` }}>
+            <span style={{ fontSize: 13 }}>{msg.callout.icon}</span>
+            <div style={{ font: '500 12px/1.45 var(--font-sans)', color: 'var(--db-ink)' }}>
+              <b style={{ color: msg.callout.bar || '#FF3621' }}>{msg.callout.label} </b>{msg.callout.text}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Table builder from live API columns+rows ----------
+
+/**
+ * Build the table shape { h0, hrest, rows } from the raw API response.
+ * columns: string[] (column names)
+ * rows: any[][] (value lists)
+ */
+function buildTable(columns, rows) {
+  if (!columns || !columns.length || !rows || !rows.length) return null;
+  const capped = rows.slice(0, MAX_ROWS);
+  // First column is the name/label column; rest are value columns.
+  const [h0, ...hrest] = columns;
+  const tableRows = capped.map((r, i) => ({
+    name: String(r[0] ?? ''),
+    vals: r.slice(1).map(v => v == null ? '' : String(v)),
+    dot: '#618794', // neutral slate; could be logic-driven but API has no status field
+  }));
+  return { h0, hrest, rows: tableRows };
+}
+
+// ---------- Main GeniePanel ----------
+
+export default function GeniePanel({ onClose, onOpenPanel, seedQuestion }) {
+  const scrollRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [typing, setTyping] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [conversationId, setConversationId] = useState(null);
+  // Track if the auto-run default has been sent
+  const autoSentRef = useRef(false);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      setTimeout(() => { scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, 50);
+    }
+  }, [messages, typing]);
+
+  // Auto-run the default question on first mount
+  useEffect(() => {
+    if (autoSentRef.current) return;
+    autoSentRef.current = true;
+    sendMessage(DEFAULT_QUESTION, null, true /* isAuto */);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Handle seedQuestion from drill-down "Ask Genie how to staff this store"
+  // seedQuestion is { q, ts } so the same store re-clicked always fires
+  useEffect(() => {
+    if (!seedQuestion || !seedQuestion.q) return;
+    sendMessage(seedQuestion.q);
+  }, [seedQuestion]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sendMessage(question, convId, isAuto) {
+    const q = question.trim();
+    if (!q) return;
+
+    // Use passed-in convId or current state (for chips/seedQuestion callers)
+    const usedConvId = convId !== undefined ? convId : conversationId;
+
+    // Append user bubble (skip for auto-run to avoid cluttering the panel on load)
+    if (!isAuto) {
+      setMessages(prev => [...prev, { role: 'user', text: q }]);
+    }
+    setTyping(true);
+
+    try {
+      const res = await postGenieAsk(q, usedConvId);
+      // Thread the conversation
+      const newConvId = res.conversation_id || usedConvId;
+      setConversationId(newConvId);
+
+      const text = res.text || '';
+      const sql = res.sql || null;
+      const columns = res.columns || [];
+      const rows = res.rows || [];
+
+      const hasData = columns.length > 0 && rows.length > 0;
+      const table = hasData ? buildTable(columns, rows) : null;
+
+      // Start building the genie message
+      const genieMsg = { role: 'genie', text, sql, table };
+
+      // Call /api/action only when we have sql or data
+      if (sql || hasData) {
+        try {
+          const actionRes = await postAction(q, sql || '', rows.slice(0, MAX_ROWS));
+          const actionText = (actionRes && actionRes.action) ? actionRes.action : null;
+          if (actionText) {
+            genieMsg.callout = {
+              icon: '⚡',
+              label: 'Action:',
+              text: actionText,
+              bg: '#FFF1EE',
+              bar: '#FF3621',
+            };
+          }
+        } catch (_) {
+          // Action call failure is non-fatal; omit callout
+        }
+      }
+
+      setTyping(false);
+      setMessages(prev => [...prev, genieMsg]);
+    } catch (err) {
+      setTyping(false);
+      setMessages(prev => [...prev, {
+        role: 'genie',
+        text: 'Sorry, I could not reach the data space right now. Please try again in a moment.',
+      }]);
+    }
+  }
+
+  function handleSendDraft() {
+    const q = draft.trim();
+    if (!q) return;
+    setDraft('');
+    sendMessage(q);
+  }
+
+  function handleChip(question) {
+    sendMessage(question);
+  }
+
+  // ---------- Render ----------
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
+
+      {/* Header */}
+      <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, borderBottom: '1px solid var(--db-line)', background: 'linear-gradient(180deg,#fff,#fbfaf8)' }}>
+        <img src="/assets/genie-icon-full-color.svg" style={{ width: 26, height: 26, display: 'block' }} alt="Genie" />
+        <div style={{ flex: 1 }}>
+          <div style={{ font: '700 14px var(--font-sans)', color: 'var(--db-navy)' }}>Ask Genie</div>
+          <div style={{ font: '500 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Store Operations - <span style={{ color: 'var(--db-coral)' }}>Labor</span></div>
+        </div>
+        <span style={{ font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)', border: '1px solid var(--db-line)', borderRadius: 6, padding: '3px 7px' }}>space: store_ops</span>
+        <button
+          onClick={onClose}
+          title="Hide Ask Genie"
+          style={{ border: 'none', background: 'var(--db-oat-medium)', color: 'var(--db-ink-soft)', width: 24, height: 24, borderRadius: 7, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}
+        >&#x2715;</button>
+      </div>
+
+      {/* Message scroll area */}
+      <div
+        ref={scrollRef}
+        className="lf"
+        style={{ flex: 1, minHeight: 120, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}
+      >
+        {messages.map((msg, i) => <GenieMessage key={i} msg={msg} />)}
+        {typing && <TypingIndicator />}
+      </div>
+
+      {/* Input area */}
+      <div style={{ padding: '10px 12px', borderTop: '1px solid var(--db-line)', background: 'var(--db-oat-light)' }}>
+        <div className="lf" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8 }}>
+          {CHIPS.map(c => (
+            <button
+              key={c.key}
+              onClick={() => handleChip(c.question)}
+              style={{ flex: '0 0 auto', whiteSpace: 'nowrap', border: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-navy)', borderRadius: 999, padding: '6px 12px', font: '500 11px var(--font-sans)', cursor: 'pointer' }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, background: '#fff', border: '1px solid var(--db-gray-300)', borderRadius: 10, padding: '6px 6px 6px 12px' }}>
+          <input
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSendDraft()}
+            placeholder="Ask about labor, staffing, foot traffic..."
+            style={{ flex: 1, border: 'none', outline: 'none', font: '400 13px var(--font-sans)', color: 'var(--db-ink)', background: 'transparent', height: 28 }}
+          />
+          <button
+            onClick={handleSendDraft}
+            style={{ flex: '0 0 auto', border: 'none', background: 'var(--db-lava)', color: '#fff', width: 30, height: 30, borderRadius: 8, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {'↑'}
+          </button>
+        </div>
+        <div style={{ marginTop: 6, font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textAlign: 'center' }}>
+          Powered by Genie - querying clover.retail_analytics live.
+        </div>
+      </div>
+    </div>
+  );
+}
