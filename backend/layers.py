@@ -155,7 +155,7 @@ def get_bootstrap() -> dict:
     # -- demographics from gold.v_demographics --
     demo_rows = run_sql(
         f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
-        f"median_income_proxy, median_age, pct_with_kids, "
+        f"median_income_proxy, "
         f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
         f"FROM {GOLD}.v_demographics"
     )

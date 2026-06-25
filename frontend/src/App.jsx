@@ -1,75 +1,37 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { getBootstrap } from './api.js';
+import { initMap, toggleLayer as mapToggleLayer, selectStore as mapSelectStore, clearStore as mapClearStore, destroyMap } from './map.js';
 
-// ---------- Static placeholder data ----------
-
-const META = {
-  metro: 'Chicago, IL Metro',
-  date_window: 'Trailing 30 days',
-  refreshed: '2026-06-23 06:00 CT',
-};
+// ---------- Static layer definitions (UI metadata only) ----------
 
 const LAYER_DEFS = [
-  { key: 'stores',      name: 'Store locations',       table: 'locations',                           icon: '📍', iconBg: '#FFEDEA' },
-  { key: 'traffic',     name: 'Foot traffic heatmap',  table: 'foot_traffic_daily',                  icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'trade',       name: 'Trade areas',           table: 'visitor_origins',                     icon: '🧭', iconBg: '#FFEDEA' },
-  { key: 'demo',        name: 'Demographics',          table: 'visitor_demographics · geo_zips',     icon: '🏘️', iconBg: '#E9F1F3' },
-  { key: 'competitors', name: 'Competitors',           table: 'nearby_pois',                         icon: '🎯', iconBg: '#F6E4E7' },
-  { key: 'pois',        name: 'Nearby POIs',           table: 'nearby_pois',                         icon: '🏬', iconBg: '#EEF1F4' },
-  { key: 'cross',       name: 'Cross-shopping',        table: 'cross_shopping',                      icon: '🔗', iconBg: '#EEF1F4' },
+  { key: 'stores',      name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
+  { key: 'traffic',     name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
+  { key: 'trade',       name: 'Trade areas',               table: 'visitor_origins',                  icon: '🧭', iconBg: '#FFEDEA' },
+  { key: 'demo',        name: 'Demographics',              table: 'visitor_demographics - geo_zips',  icon: '🏘️', iconBg: '#E9F1F3' },
+  { key: 'competitors', name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
+  { key: 'pois',        name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
+  { key: 'cross',       name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
 ];
-
-const SAMPLE_KPIS = [
-  { label: 'Daily foot traffic', value: '2,841',  arrow: '▲', delta: '3.2%', deltaNote: 'vs last wk', deltaColor: 'var(--db-green)' },
-  { label: 'Trade-area visitors', value: '18,530', arrow: '▲', delta: '2.6%', deltaNote: 'reach',      deltaColor: 'var(--db-green)' },
-  { label: 'Avg dwell',          value: '24m',    arrow: '▼', delta: '1.1%', deltaNote: '',            deltaColor: 'var(--db-lava)'  },
-  { label: 'Capture rate',       value: '14.3%',  arrow: '▲', delta: '0.4%', deltaNote: '',            deltaColor: 'var(--db-green)' },
-];
-
-const SAMPLE_DEMO_BARS = [
-  { band: '18-24', pct: '9%',  width: '31%'  },
-  { band: '25-34', pct: '22%', width: '75%'  },
-  { band: '35-44', pct: '24%', width: '82%'  },
-  { band: '45-54', pct: '19%', width: '65%'  },
-  { band: '55-64', pct: '14%', width: '48%'  },
-  { band: '65+',   pct: '12%', width: '41%'  },
-];
-
-// A simple 30-point sparkline path for the placeholder trend chart
-function buildSparkline() {
-  const raw = [2400,2350,2500,2480,2600,2550,2700,2650,2800,2750,2900,2820,2780,2950,3000,2880,2820,2780,2900,2950,3100,3050,2980,3200,3150,3080,3100,3200,3180,2841];
-  const W = 320, H = 84;
-  const mn = Math.min(...raw), mx = Math.max(...raw), rng = (mx - mn) || 1;
-  const pts = raw.map((v, i) => [
-    ((i / (raw.length - 1)) * W).toFixed(1),
-    (H - ((v - mn) / rng) * (H - 8) - 2).toFixed(1),
-  ]);
-  const line = 'M' + pts.map(p => p[0] + ',' + p[1]).join(' L');
-  const area = line + ` L${W},${H} L0,${H} Z`;
-  return { line, area };
-}
-const SPARKLINE = buildSparkline();
 
 const GENIE_SEED = [
-  {
-    role: 'user',
-    text: "Which stores are understaffed for tomorrow's forecast?",
-  },
+  { role: 'user', text: "Which stores are understaffed for tomorrow's forecast?" },
   {
     role: 'genie',
-    text: '4 stores are projected to run understaffed against tomorrow\'s foot-traffic forecast (target 165 visits / labor-hour). Ranked by labor gap:',
+    text: "4 stores are projected to run understaffed against tomorrow's foot-traffic forecast (target 165 visits / labor-hour). Ranked by labor gap:",
     sql: "SELECT name, forecast_visits, scheduled_hours, ideal_hours,\n       ideal_hours - scheduled_hours AS add_hours\nFROM clover.retail_analytics.locations\nWHERE staffing_status = 'understaffed'\nORDER BY add_hours DESC\nLIMIT 5;",
     table: {
       h0: 'Store',
       hrest: ['Sched', 'Rec', 'Add'],
       rows: [
-        { name: 'Wicker Park',    vals: ['32h', '40h', '+8h'],  dot: '#FF3621' },
-        { name: 'Logan Square',   vals: ['28h', '34h', '+6h'],  dot: '#FF3621' },
-        { name: 'Pilsen',         vals: ['30h', '35h', '+5h'],  dot: '#FF3621' },
-        { name: 'Hyde Park',      vals: ['26h', '30h', '+4h'],  dot: '#FF3621' },
+        { name: 'Wicker Park',  vals: ['32h', '40h', '+8h'], dot: '#FF3621' },
+        { name: 'Logan Square', vals: ['28h', '34h', '+6h'], dot: '#FF3621' },
+        { name: 'Pilsen',       vals: ['30h', '35h', '+5h'], dot: '#FF3621' },
+        { name: 'Hyde Park',    vals: ['26h', '30h', '+4h'], dot: '#FF3621' },
       ],
     },
     callout: {
-      icon: '⚡',
+      icon: 'Lightning',
       label: 'Action:',
       text: 'Cover ~23 labor-hours tomorrow. 2 overstaffed stores have ~14h of slack you can reallocate.',
       bg: '#FFF1EE',
@@ -79,11 +41,29 @@ const GENIE_SEED = [
 ];
 
 const CHIPS = [
-  { key: 'laborHours', label: 'Suggest labor hours'      },
-  { key: 'drops',      label: 'Sudden traffic drops'     },
-  { key: 'peaks',      label: 'Peak-hour gaps'           },
+  { key: 'laborHours', label: 'Suggest labor hours' },
+  { key: 'drops',      label: 'Sudden traffic drops' },
+  { key: 'peaks',      label: 'Peak-hour gaps' },
   { key: 'vsTraffic',  label: 'Staffing vs. foot traffic' },
 ];
+
+// ---------- Helpers ----------
+
+function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+function hrs(n) { return (n > 0 ? '+' : '') + n + 'h'; }
+
+function buildSparkline(series) {
+  const W = 320, H = 84;
+  const s = series && series.length ? series : [0];
+  const mn = Math.min(...s), mx = Math.max(...s), rng = (mx - mn) || 1;
+  const pts = s.map((v, i) => [
+    ((i / (s.length - 1)) * W).toFixed(1),
+    (H - ((v - mn) / rng) * (H - 8) - 2).toFixed(1),
+  ]);
+  const line = 'M' + pts.map(p => p[0] + ',' + p[1]).join(' L');
+  const area = line + ` L${W},${H} L0,${H} Z`;
+  return { line, area };
+}
 
 // ---------- Sub-components ----------
 
@@ -156,10 +136,7 @@ function KpiTile({ kpi }) {
 
 function GenieMessage({ msg }) {
   const isGenie = msg.role === 'genie';
-  const wrapStyle = {
-    alignSelf: isGenie ? 'stretch' : 'flex-end',
-    maxWidth: isGenie ? '100%' : '88%',
-  };
+  const wrapStyle = { alignSelf: isGenie ? 'stretch' : 'flex-end', maxWidth: isGenie ? '100%' : '88%' };
   const bubbleStyle = isGenie
     ? { background: 'var(--db-oat-light)', border: '1px solid var(--db-line)', borderRadius: '4px 12px 12px 12px', padding: '11px 13px' }
     : { background: 'var(--db-navy)', borderRadius: '12px 12px 4px 12px', padding: '9px 13px' };
@@ -175,14 +152,12 @@ function GenieMessage({ msg }) {
       )}
       <div style={bubbleStyle}>
         <div style={{ font: '400 13px/1.5 var(--font-sans)', color: textColor }}>{msg.text}</div>
-
         {msg.sql && (
           <div style={{ marginTop: 9, background: 'var(--db-navy)', borderRadius: 8, padding: '9px 11px', overflowX: 'auto' }}>
             <div style={{ font: '600 9px var(--font-sans)', letterSpacing: '.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,.4)', marginBottom: 5 }}>Generated SQL</div>
             <pre style={{ margin: 0, font: '400 11px/1.5 var(--font-mono)', color: '#d7e0e2', whiteSpace: 'pre' }}>{msg.sql}</pre>
           </div>
         )}
-
         {msg.table && (
           <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
@@ -204,7 +179,6 @@ function GenieMessage({ msg }) {
             ))}
           </div>
         )}
-
         {msg.callout && (
           <div style={{ marginTop: 9, display: 'flex', gap: 8, padding: '9px 11px', borderRadius: 8, background: msg.callout.bg, borderLeft: `3px solid ${msg.callout.bar}` }}>
             <span style={{ fontSize: 13 }}>{msg.callout.icon}</span>
@@ -223,19 +197,143 @@ function GenieMessage({ msg }) {
 export default function App() {
   const mapRef = useRef(null);
   const genieRef = useRef(null);
+  const mapInitialized = useRef(false);
 
-  const [layersOn, setLayersOn] = useState({ stores: true, traffic: true, trade: false, demo: false, competitors: false, pois: false, cross: false });
+  // Bootstrap / loading state
+  const [ready, setReady] = useState(false);
+  const [meta, setMeta] = useState({ metro: '', date_window: 'Trailing 30 days', refreshed: '' });
+
+  // Layer toggle state (mirrors map module)
+  const [layersOn, setLayersOn] = useState({
+    stores: true, traffic: true, trade: false, demo: false,
+    competitors: false, pois: false, cross: false,
+  });
+
+  // In-viewport analytics state
+  const [inView, setInView] = useState(null);
+
+  // Selected store for drill-down card
+  const [selectedStore, setSelectedStore] = useState(null);
+
+  // Panel visibility
   const [showLeft, setShowLeft] = useState(true);
   const [showRight, setShowRight] = useState(true);
+
+  // Genie chat
   const [genie, setGenie] = useState(GENIE_SEED);
   const [draft, setDraft] = useState('');
 
   const activeCount = LAYER_DEFS.filter(d => layersOn[d.key]).length;
 
-  function toggleLayer(key) {
-    setLayersOn(prev => ({ ...prev, [key]: !prev[key] }));
+  // ---------- Bootstrap on mount ----------
+  useEffect(() => {
+    if (mapInitialized.current) return;
+    mapInitialized.current = true;
+
+    getBootstrap()
+      .then(data => {
+        // Populate top-bar pills from live META
+        const m = data.META || {};
+        setMeta({
+          metro: m.metro || 'Greater Boston Metro',
+          date_window: m.date_window || 'Trailing 30 days',
+          refreshed: m.refreshed || new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+        });
+
+        // Init Leaflet map
+        if (mapRef.current) {
+          initMap(mapRef.current, data, {
+            onRecompute: (iv) => setInView(iv),
+            onStoreSelect: (store) => setSelectedStore(store),
+          });
+        }
+
+        setReady(true);
+      })
+      .catch(err => {
+        console.error('Bootstrap failed:', err);
+        // Show map container without data so app is not blank
+        setReady(true);
+      });
+
+    return () => { destroyMap(); };
+  }, []);
+
+  // Scroll Genie to bottom on new messages
+  useEffect(() => {
+    if (genieRef.current) {
+      setTimeout(() => { genieRef.current.scrollTop = genieRef.current.scrollHeight; }, 50);
+    }
+  }, [genie]);
+
+  // ---------- Layer toggle ----------
+  const toggleLayer = useCallback((key) => {
+    const newState = mapToggleLayer(key);
+    setLayersOn({ ...newState });
+  }, []);
+
+  // ---------- Store drill-down ----------
+  function handleStoreClick(id) {
+    mapSelectStore(id);
   }
 
+  function handleClearStore() {
+    mapClearStore();
+    setSelectedStore(null);
+  }
+
+  // ---------- KPI derivation ----------
+  let kpis = [];
+  let trendLine = '', trendArea = '';
+  let demoBars = [];
+  let demoIncome = null, demoAge = null, demoKids = null;
+  let inViewLabel = 'Pan or zoom the map';
+
+  if (inView && inView.n > 0) {
+    inViewLabel = `${inView.n} store${inView.n > 1 ? 's' : ''} in view`;
+    const arrow = d => (d > 0.5 ? '▲' : d < -0.5 ? '▼' : '—');
+    const col = (d, good) => Math.abs(d) < 0.5
+      ? 'var(--db-ink-muted)'
+      : (good ? (d > 0 ? 'var(--db-green)' : 'var(--db-lava)') : (d > 0 ? 'var(--db-lava)' : 'var(--db-green)'));
+
+    kpis = [
+      { label: 'Daily foot traffic',  value: fmt(inView.dailyTraffic), arrow: arrow(inView.trafficDelta), delta: Math.abs(inView.trafficDelta).toFixed(1) + '%', deltaNote: 'vs last wk', deltaColor: col(inView.trafficDelta, true) },
+      { label: 'Trade-area visitors', value: fmt(inView.visitors),     arrow: arrow(inView.trafficDelta), delta: Math.abs(inView.trafficDelta * 0.8).toFixed(1) + '%', deltaNote: 'reach', deltaColor: col(inView.trafficDelta, true) },
+      { label: 'Avg dwell',           value: inView.dwell.toFixed(0) + 'm', arrow: arrow(inView.dwellDelta),   delta: Math.abs(inView.dwellDelta).toFixed(1) + '%',   deltaNote: '', deltaColor: col(inView.dwellDelta, true) },
+      { label: 'Capture rate',        value: inView.cap.toFixed(1) + '%',   arrow: arrow(inView.capDelta),    delta: Math.abs(inView.capDelta).toFixed(1) + '%',    deltaNote: '', deltaColor: col(inView.capDelta, true) },
+    ];
+
+    const spark = buildSparkline(inView.series);
+    trendLine = spark.line;
+    trendArea = spark.area;
+
+    demoBars = (inView.bands || []).map((band, i) => ({
+      band,
+      pct: (inView.ageAgg[i] || 0).toFixed(0) + '%',
+      width: Math.min(100, (inView.ageAgg[i] || 0) * 3.4).toFixed(0) + '%',
+    }));
+
+    // median_income_proxy is a raw estimate; format sensibly
+    const inc = inView.incAgg;
+    demoIncome = inc > 0
+      ? (inc >= 1000000 ? '$' + (inc / 1000000).toFixed(1) + 'M' : '$' + (inc / 1000).toFixed(0) + 'k')
+      : null;
+    demoAge = inView.ageMed > 0 ? inView.ageMed.toFixed(0) : null;
+    demoKids = inView.kidsAgg > 0 ? inView.kidsAgg.toFixed(0) + '%' : null;
+  } else if (inView && inView.n === 0) {
+    inViewLabel = 'No stores in view - zoom out';
+  }
+
+  // ---------- Selected store card ----------
+  const sel = selectedStore;
+  let selStatusColor = 'var(--db-ink-muted)';
+  if (sel) {
+    selStatusColor = sel.staffing_status === 'understaffed' ? 'var(--db-lava)'
+      : sel.staffing_status === 'overstaffed' ? 'var(--db-amber)'
+      : 'var(--db-green)';
+  }
+
+  // ---------- Genie ----------
   function sendDraft() {
     const t = draft.trim();
     if (!t) return;
@@ -253,9 +351,7 @@ export default function App() {
     }]);
   }
 
-  // Styles that mirror the DC design's glass overlay layout
-  const glass = 'position:absolute;top:14px;bottom:14px;background:rgba(255,255,255,.93);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.7);border-radius:14px;box-shadow:var(--shadow-lg);';
-
+  // ---------- Styles ----------
   const leftPanelStyle = {
     position: 'absolute', top: 14, bottom: 14, left: 14, width: 336,
     background: 'rgba(255,255,255,.93)',
@@ -288,11 +384,7 @@ export default function App() {
     color: 'var(--db-navy)', font: '600 12px var(--font-sans)', cursor: 'pointer',
   };
 
-  const leftToggleStyle = {
-    ...handleBase,
-    left: showLeft ? 360 : 14,
-    padding: showLeft ? '0 12px' : '0 13px',
-  };
+  const leftToggleStyle = { ...handleBase, left: showLeft ? 360 : 14, padding: showLeft ? '0 12px' : '0 13px' };
 
   const genieBtnStyle = {
     display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -304,10 +396,11 @@ export default function App() {
     border: '1px solid var(--db-lava)',
   };
 
+  // ---------- Render ----------
   return (
     <div style={{ height: '100vh', width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'var(--font-sans)', color: 'var(--db-ink)' }}>
 
-      {/* ============ TOP BAR ============ */}
+      {/* TOP BAR */}
       <div style={{ flex: '0 0 56px', display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px', background: 'var(--db-navy)', color: '#fff', zIndex: 1200, boxShadow: '0 1px 0 rgba(0,0,0,.2)', flexWrap: 'nowrap', overflow: 'hidden' }}>
         <img src="/assets/databricks-logo-white.svg" style={{ height: 19, display: 'block' }} alt="Databricks" />
         <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)' }}></div>
@@ -317,10 +410,10 @@ export default function App() {
         </div>
         <div style={{ display: 'flex', gap: 7, marginLeft: 6, flexShrink: 0 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, background: 'rgba(255,255,255,.09)', font: '500 12px var(--font-sans)', whiteSpace: 'nowrap' }}>
-            {'📍'} {META.metro} <span style={{ opacity: .5 }}>{'▾'}</span>
+            {'📍'} {meta.metro || 'Greater Boston Metro'} <span style={{ opacity: .5 }}>{'▾'}</span>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px', borderRadius: 7, background: 'rgba(255,255,255,.09)', font: '500 12px var(--font-sans)', whiteSpace: 'nowrap' }}>
-            {META.date_window} <span style={{ opacity: .5 }}>{'▾'}</span>
+            {meta.date_window} <span style={{ opacity: .5 }}>{'▾'}</span>
           </span>
         </div>
         <div style={{ flex: 1, minWidth: 8 }}></div>
@@ -331,28 +424,29 @@ export default function App() {
         <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)', flexShrink: 0 }}></div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.15, flexShrink: 0 }}>
           <span style={{ font: '600 10px var(--font-sans)', color: 'rgba(255,255,255,.85)' }}>Live</span>
-          <span style={{ font: '400 10px var(--font-mono)', color: 'rgba(255,255,255,.45)' }}>{META.refreshed}</span>
+          <span style={{ font: '400 10px var(--font-mono)', color: 'rgba(255,255,255,.45)' }}>{meta.refreshed}</span>
         </div>
       </div>
 
-      {/* ============ STAGE ============ */}
+      {/* STAGE */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex', background: 'var(--db-oat-medium)' }}>
 
-        {/* ---- MAP COLUMN (full bleed behind glass panels) ---- */}
+        {/* MAP (full-bleed, behind glass panels) */}
         <div style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          {/* Map mount point - Task 10 will initialise Leaflet here */}
           <div
             ref={mapRef}
             id="map"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', background: '#E7E4DE' }}
           >
-            {/* Placeholder loading state until Leaflet mounts */}
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--db-oat-medium)', zIndex: 1 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-                <div style={{ width: 34, height: 34, border: '3px solid var(--db-gray-300)', borderTopColor: 'var(--db-lava)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
-                <span style={{ font: '500 13px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Loading geospatial layers...</span>
+            {/* Loading veil - shown until ready */}
+            {!ready && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--db-oat-medium)', zIndex: 700 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 34, height: 34, border: '3px solid var(--db-gray-300)', borderTopColor: 'var(--db-lava)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+                  <span style={{ font: '500 13px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Loading geospatial layers...</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -361,8 +455,8 @@ export default function App() {
           {showLeft ? '‹ Hide' : '☰ Layers & data'}
         </button>
 
-        {/* Heat legend (shown when traffic layer is on) */}
-        {layersOn.traffic && (
+        {/* Heat legend - shown when traffic layer is on and map ready */}
+        {ready && layersOn.traffic && (
           <div style={{ position: 'absolute', left: 14, bottom: 14, zIndex: 650, background: 'rgba(255,255,255,.92)', backdropFilter: 'blur(6px)', border: '1px solid var(--db-line)', borderRadius: 10, padding: '9px 12px', boxShadow: 'var(--shadow-md)' }}>
             <div style={{ font: '700 10px var(--font-sans)', letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--db-ink-muted)', marginBottom: 6 }}>Foot-traffic density</div>
             <div style={{ width: 150, height: 8, borderRadius: 4, background: 'linear-gradient(90deg,#FFE08A,#FF9E94,#FF5F46,#FF3621)' }}></div>
@@ -372,7 +466,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ---- LEFT RAIL : LAYERS + ANALYTICS ---- */}
+        {/* LEFT RAIL: layers + analytics */}
         {showLeft && (
           <div className="lf" style={leftPanelStyle}>
 
@@ -404,17 +498,63 @@ export default function App() {
               <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, background: 'var(--db-oat-light)', zIndex: 2 }}>
                 <div>
                   <div style={{ font: '700 13px var(--font-sans)', letterSpacing: '.02em', textTransform: 'uppercase', color: 'var(--db-navy)' }}>Analytics</div>
-                  <div style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 2 }}>12 stores in view</div>
+                  <div style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 2 }}>{inViewLabel}</div>
                 </div>
                 <span style={{ fontSize: 15, opacity: .5 }}>{'🛰️'}</span>
               </div>
 
+              {/* Selected store drill-down card */}
+              {sel && (
+                <div style={{ margin: '0 12px 10px', border: '1px solid var(--db-line)', borderRadius: 12, background: '#fff', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
+                  <div style={{ padding: '11px 13px', display: 'flex', alignItems: 'flex-start', gap: 10, borderBottom: '1px solid var(--db-line)' }}>
+                    <div style={{ flex: '0 0 8px', height: 8, borderRadius: '50%', marginTop: 5, background: selStatusColor }}></div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ font: '700 14px var(--font-sans)', color: 'var(--db-navy)' }}>{sel.name}</div>
+                      <div style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>{sel.format} - {sel.zip} - {fmt(sel.sqft)} sq ft</div>
+                    </div>
+                    <button onClick={handleClearStore} style={{ border: 'none', background: 'var(--db-oat-medium)', color: 'var(--db-ink-soft)', width: 22, height: 22, borderRadius: 6, cursor: 'pointer', fontSize: 13, lineHeight: 1 }}>&#x2715;</button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px', background: 'var(--db-line)' }}>
+                    <div style={{ background: '#fff', padding: '9px 13px' }}>
+                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Staffing</div>
+                      <div style={{ font: '700 13px var(--font-sans)', color: selStatusColor, textTransform: 'capitalize' }}>{sel.staffing_status}</div>
+                    </div>
+                    <div style={{ background: '#fff', padding: '9px 13px' }}>
+                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Labor gap</div>
+                      <div style={{ font: '700 13px var(--font-mono)', color: selStatusColor }}>{hrs(sel.labor_gap)}</div>
+                    </div>
+                    <div style={{ background: '#fff', padding: '9px 13px' }}>
+                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>3-day traffic</div>
+                      <div style={{ font: '700 13px var(--font-mono)', color: sel.traffic_delta_pct < 0 ? 'var(--db-lava)' : 'var(--db-green)' }}>
+                        {(sel.traffic_delta_pct > 0 ? '+' : '') + sel.traffic_delta_pct + '%'}
+                      </div>
+                    </div>
+                    <div style={{ background: '#fff', padding: '9px 13px' }}>
+                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', textTransform: 'uppercase', letterSpacing: '.06em' }}>Recommend</div>
+                      <div style={{ font: '700 13px var(--font-mono)', color: 'var(--db-navy)' }}>{sel.ideal_hours}h</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { /* Task 11 will wire Genie ask */ }}
+                    style={{ width: '100%', border: 'none', borderTop: '1px solid var(--db-line)', background: '#fff', color: 'var(--db-lava)', padding: 9, cursor: 'pointer', font: '600 12px var(--font-sans)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  >
+                    {'✨'} Ask Genie how to staff this store
+                  </button>
+                </div>
+              )}
+
               {/* KPI tiles */}
-              <div style={{ padding: '0 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {SAMPLE_KPIS.map(kpi => (
-                  <KpiTile key={kpi.label} kpi={kpi} />
-                ))}
-              </div>
+              {kpis.length > 0 ? (
+                <div style={{ padding: '0 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {kpis.map(kpi => <KpiTile key={kpi.label} kpi={kpi} />)}
+                </div>
+              ) : (
+                <div style={{ padding: '0 12px 4px' }}>
+                  <div style={{ background: '#fff', border: '1px solid var(--db-line)', borderRadius: 11, padding: '18px 14px', textAlign: 'center', color: 'var(--db-ink-muted)', font: '400 12px var(--font-sans)' }}>
+                    {inView && inView.n === 0 ? 'Zoom out to see store analytics' : 'Pan or zoom to load store analytics'}
+                  </div>
+                </div>
+              )}
 
               {/* Trend sparkline */}
               <div style={{ padding: 12 }}>
@@ -431,8 +571,8 @@ export default function App() {
                       </linearGradient>
                     </defs>
                     <line x1="0" y1="84" x2="320" y2="84" stroke="var(--db-line)" strokeWidth="1" />
-                    <path d={SPARKLINE.area} fill="url(#cvgrad)" />
-                    <path d={SPARKLINE.line} fill="none" stroke="var(--db-lava)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+                    {trendArea && <path d={trendArea} fill="url(#cvgrad)" />}
+                    {trendLine && <path d={trendLine} fill="none" stroke="var(--db-lava)" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />}
                   </svg>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)' }}>
                     <span>30d ago</span><span>today</span>
@@ -448,22 +588,35 @@ export default function App() {
                     <span style={{ font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)' }}>visitor_demographics</span>
                   </div>
                   <div style={{ display: 'flex', gap: 14, marginBottom: 12 }}>
-                    <div>
-                      <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>$54k</div>
-                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>median income</div>
-                    </div>
-                    <div style={{ width: 1, background: 'var(--db-line)' }}></div>
-                    <div>
-                      <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>37</div>
-                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>median age</div>
-                    </div>
-                    <div style={{ width: 1, background: 'var(--db-line)' }}></div>
-                    <div>
-                      <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>41%</div>
-                      <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>hh w/ kids</div>
-                    </div>
+                    {demoIncome && (
+                      <>
+                        <div>
+                          <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>{demoIncome}</div>
+                          <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>income index</div>
+                        </div>
+                        <div style={{ width: 1, background: 'var(--db-line)' }}></div>
+                      </>
+                    )}
+                    {demoAge && (
+                      <>
+                        <div>
+                          <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>{demoAge}</div>
+                          <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>median age</div>
+                        </div>
+                        <div style={{ width: 1, background: 'var(--db-line)' }}></div>
+                      </>
+                    )}
+                    {demoKids && (
+                      <div>
+                        <div style={{ font: '700 18px var(--font-sans)', color: 'var(--db-navy)', lineHeight: 1 }}>{demoKids}</div>
+                        <div style={{ font: '400 10px var(--font-sans)', color: 'var(--db-ink-muted)', marginTop: 3 }}>hh w/ kids</div>
+                      </div>
+                    )}
+                    {!demoIncome && !demoAge && !demoKids && (
+                      <div style={{ font: '400 12px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Pan map to load demographics</div>
+                    )}
                   </div>
-                  {SAMPLE_DEMO_BARS.map(b => (
+                  {demoBars.map(b => (
                     <div key={b.band} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <span style={{ flex: '0 0 42px', font: '500 11px var(--font-mono)', color: 'var(--db-ink-soft)', textAlign: 'right' }}>{b.band}</span>
                       <div style={{ flex: 1, height: 9, background: 'var(--db-oat-medium)', borderRadius: 5, overflow: 'hidden' }}>
@@ -476,7 +629,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Unity Catalog governance footer */}
+            {/* UC governance footer */}
             <div style={{ padding: '12px 16px', borderTop: '1px solid var(--db-line)', display: 'flex', alignItems: 'center', gap: 8, background: '#fff' }}>
               <span style={{ fontSize: 13 }}>{'🔒'}</span>
               <span style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)', lineHeight: 1.4 }}>
@@ -486,7 +639,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ---- RIGHT RAIL : ASK GENIE ---- */}
+        {/* RIGHT RAIL: Ask Genie */}
         {showRight && (
           <div style={rightPanelStyle}>
             <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, background: '#fff', borderRadius: 14, overflow: 'hidden' }}>
@@ -496,7 +649,7 @@ export default function App() {
                 <img src="/assets/genie-icon-full-color.svg" style={{ width: 26, height: 26, display: 'block' }} alt="Genie" />
                 <div style={{ flex: 1 }}>
                   <div style={{ font: '700 14px var(--font-sans)', color: 'var(--db-navy)' }}>Ask Genie</div>
-                  <div style={{ font: '500 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Store Operations · <span style={{ color: 'var(--db-coral)' }}>Labor</span></div>
+                  <div style={{ font: '500 11px var(--font-sans)', color: 'var(--db-ink-muted)' }}>Store Operations - <span style={{ color: 'var(--db-coral)' }}>Labor</span></div>
                 </div>
                 <span style={{ font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)', border: '1px solid var(--db-line)', borderRadius: 6, padding: '3px 7px' }}>space: store_ops</span>
                 <button onClick={() => setShowRight(false)} title="Hide Ask Genie" style={{ border: 'none', background: 'var(--db-oat-medium)', color: 'var(--db-ink-soft)', width: 24, height: 24, borderRadius: 7, cursor: 'pointer', fontSize: 13, lineHeight: 1, flexShrink: 0 }}>&#x2715;</button>
@@ -504,9 +657,7 @@ export default function App() {
 
               {/* Message area */}
               <div ref={genieRef} className="lf" style={{ flex: 1, minHeight: 120, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                {genie.map((msg, i) => (
-                  <GenieMessage key={i} msg={msg} />
-                ))}
+                {genie.map((msg, i) => <GenieMessage key={i} msg={msg} />)}
               </div>
 
               {/* Input area */}

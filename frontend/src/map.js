@@ -1,0 +1,459 @@
+/**
+ * map.js - Leaflet map logic for the Clover Geospatial App.
+ *
+ * Ported from the design's `class Component extends DCLogic` methods:
+ * initMap, tileUrl, pinColor, buildStores, buildTraffic, buildTrade,
+ * buildDemo, buildCompetitors, buildPois, buildCross, applyLayers,
+ * toggleLayer, selectStore, highlight, recompute.
+ *
+ * Public surface:
+ *   initMap(container, data, { onRecompute, onStoreSelect })
+ *   toggleLayer(key)
+ *   selectStore(id)
+ *   clearStore()
+ *   getLayersState()   -- returns { [key]: boolean } current visibility
+ *
+ * The map module owns mutable Leaflet state internally. React state is
+ * updated only through the callbacks passed to initMap.
+ */
+
+import 'leaflet/dist/leaflet.css';
+import L from 'leaflet';
+import 'leaflet.heat';
+
+// Fix Leaflet default icon path broken by bundlers
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: new URL('leaflet/dist/images/marker-icon-2x.png', import.meta.url).href,
+  iconUrl: new URL('leaflet/dist/images/marker-icon.png', import.meta.url).href,
+  shadowUrl: new URL('leaflet/dist/images/marker-shadow.png', import.meta.url).href,
+});
+
+// ---------------------------------------------------------------------------
+// Module-level mutable state (one map per page)
+// ---------------------------------------------------------------------------
+
+let _map = null;
+let _tile = null;
+let _lg = {};               // layer groups keyed by layer name
+let _storeMarkers = {};     // { store_id: circleMarker }
+let _data = null;           // bootstrap payload
+let _layersOn = {};         // { key: boolean }
+let _selectedId = null;
+let _onRecompute = null;
+let _onStoreSelect = null;
+const _PIN_MODE = 'staffing'; // fixed; could be exposed as prop in a future task
+
+// ---------------------------------------------------------------------------
+// Tile / basemap
+// ---------------------------------------------------------------------------
+
+function tileUrl(basemap = 'light') {
+  if (basemap === 'dark')    return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  if (basemap === 'voyager') return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  return 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+}
+
+// ---------------------------------------------------------------------------
+// Pin colour helper
+// ---------------------------------------------------------------------------
+
+function pinColor(s) {
+  if (_PIN_MODE === 'format') {
+    if (s.format === 'Supercenter')  return '#1B5162';
+    if (s.format === 'Neighborhood') return '#FF5F46';
+    return '#618794';
+  }
+  if (_PIN_MODE === 'traffic') {
+    const max = Math.max(..._data.locations.map(x => x.recent_visits));
+    const t = s.recent_visits / max;
+    const stops = [[255,224,138],[255,158,148],[255,95,70],[255,54,33]];
+    const i = Math.min(stops.length - 1, Math.floor(t * (stops.length - 1)));
+    const c = stops[i];
+    return `rgb(${c[0]},${c[1]},${c[2]})`;
+  }
+  // staffing (default)
+  if (s.staffing_status === 'understaffed') return '#FF3621';
+  if (s.staffing_status === 'overstaffed')  return '#FFAB00';
+  return '#00A972';
+}
+
+// ---------------------------------------------------------------------------
+// Layer builders
+// ---------------------------------------------------------------------------
+
+function buildStores() {
+  const grp = L.layerGroup();
+  _storeMarkers = {};
+  for (const s of _data.locations) {
+    const r = 7 + (s.recent_visits / 4200) * 11;
+    const m = L.circleMarker([s.lat, s.lng], {
+      radius: r,
+      fillColor: pinColor(s),
+      color: '#fff',
+      weight: 2,
+      fillOpacity: 0.92,
+    });
+    m.bindTooltip(`${s.name} - ${s.staffing_status}`, {
+      className: 'cv-tt',
+      direction: 'top',
+      offset: [0, -4],
+    });
+    m.on('click', () => selectStore(s.store_id));
+    m._baseR = r;
+    grp.addLayer(m);
+    _storeMarkers[s.store_id] = m;
+  }
+  _lg.stores = grp;
+}
+
+function buildTraffic() {
+  const max = Math.max(..._data.locations.map(x => x.recent_visits));
+  const pts = _data.locations.map(s => [s.lat, s.lng, s.recent_visits / max]);
+  // visitor origins from the bootstrap helpers contribute catchment heat
+  const origins = _data.visitor_origins || [];
+  for (const o of origins) {
+    pts.push([o.origin_lat, o.origin_lng, Math.min(0.6, (o.visitors / 300))]);
+  }
+  _lg.traffic = L.heatLayer(pts, {
+    radius: 26, blur: 20, maxZoom: 14, minOpacity: 0.4, max: 1.0,
+    gradient: { 0.2: '#FFE08A', 0.45: '#FF9E94', 0.7: '#FF5F46', 1: '#FF3621' },
+  });
+}
+
+function buildTrade() {
+  const grp = L.layerGroup();
+  const origins = _data.visitor_origins || [];
+  const byStore = {};
+  for (const o of origins) {
+    (byStore[o.store_id] = byStore[o.store_id] || []).push(o);
+  }
+  for (const s of _data.locations) {
+    const os = (byStore[s.store_id] || []).sort((a, b) => b.visitors - a.visitors).slice(0, 5);
+    for (const o of os) {
+      grp.addLayer(L.polyline(
+        [[s.lat, s.lng], [o.origin_lat, o.origin_lng]],
+        { color: '#FF5F46', weight: 1 + (o.visitors / 120), opacity: 0.35 }
+      ));
+      grp.addLayer(L.circleMarker([o.origin_lat, o.origin_lng], {
+        radius: 3, fillColor: '#FF5F46', color: '#fff', weight: 1, fillOpacity: 0.7,
+      }));
+    }
+  }
+  _lg.trade = grp;
+}
+
+function buildDemo() {
+  const grp = L.layerGroup();
+  const geoZips = _data.geo_zips || [];
+  if (geoZips.length === 0) { _lg.demo = grp; return; }
+  const incomes = geoZips.map(z => z.median_income);
+  const lo = Math.min(...incomes);
+  const hi = Math.max(...incomes);
+  const scale = ['#E3EAEC', '#A9C2C9', '#7BA3AD', '#4E7C8A', '#1B5162'];
+  for (const z of geoZips) {
+    const t = (z.median_income - lo) / (hi - lo || 1);
+    const col = scale[Math.min(scale.length - 1, Math.floor(t * scale.length))];
+    grp.addLayer(
+      L.circle([z.lat, z.lng], {
+        radius: 2400, fillColor: col, color: col, weight: 1, fillOpacity: 0.45,
+      }).bindTooltip(
+        `ZIP ${z.zip} - $${(z.median_income / 1000).toFixed(0)}k median`,
+        { className: 'cv-tt' }
+      )
+    );
+  }
+  _lg.demo = grp;
+}
+
+function buildCompetitors() {
+  const grp = L.layerGroup();
+  const pois = _data.nearby_pois || [];
+  for (const p of pois) {
+    if (p.category !== 'competitor') continue;
+    const icon = L.divIcon({
+      className: '',
+      iconSize: [16, 16],
+      html: '<div style="width:12px;height:12px;background:#98102A;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);transform:rotate(45deg);"></div>',
+    });
+    grp.addLayer(
+      L.marker([p.lat, p.lng], { icon })
+        .bindTooltip(`${p.name} - competitor - ${p.distance_mi} mi`, { className: 'cv-tt' })
+    );
+  }
+  _lg.competitors = grp;
+}
+
+function buildPois() {
+  const grp = L.layerGroup();
+  const pois = _data.nearby_pois || [];
+  const col = { complementary: '#618794', transit: '#1B3139' };
+  for (const p of pois) {
+    if (p.category === 'competitor') continue;
+    const c = col[p.category] || '#618794';
+    const icon = L.divIcon({
+      className: '',
+      iconSize: [12, 12],
+      html: `<div style="width:10px;height:10px;border-radius:3px;background:${c};border:1.5px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.3);"></div>`,
+    });
+    grp.addLayer(
+      L.marker([p.lat, p.lng], { icon })
+        .bindTooltip(`${p.name} - ${p.category}`, { className: 'cv-tt' })
+    );
+  }
+  _lg.pois = grp;
+}
+
+function buildCross() {
+  const grp = L.layerGroup();
+  const cross = _data.cross_shopping || [];
+  if (cross.length === 0) { _lg.cross = grp; return; }
+  const max = Math.max(...cross.map(c => c.shared_visitors));
+  for (const c of cross) {
+    grp.addLayer(
+      L.polyline([[c.a_lat, c.a_lng], [c.b_lat, c.b_lng]], {
+        color: '#618794',
+        weight: 1 + (c.shared_visitors / max) * 4,
+        opacity: 0.5,
+        dashArray: '4 4',
+      }).bindTooltip(`${c.shared_visitors} shared visitors`, { className: 'cv-tt' })
+    );
+  }
+  _lg.cross = grp;
+}
+
+// ---------------------------------------------------------------------------
+// Layer management
+// ---------------------------------------------------------------------------
+
+function applyLayers() {
+  if (!_map) return;
+  // bottom to top draw order
+  const ORDER = ['demo', 'cross', 'trade', 'traffic', 'competitors', 'pois', 'stores'];
+  for (const k of ORDER) {
+    const on = _layersOn[k];
+    const grp = _lg[k];
+    if (!grp) continue;
+    const present = _map.hasLayer(grp);
+    if (on && !present) grp.addTo(_map);
+    if (!on && present) _map.removeLayer(grp);
+  }
+  // keep store markers above heatmap/choropleth
+  if (_layersOn.stores) {
+    Object.values(_storeMarkers).forEach(m => {
+      if (m.bringToFront) m.bringToFront();
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Analytics recompute (client-side, mirrors design's recompute())
+// ---------------------------------------------------------------------------
+
+function recompute() {
+  if (!_map || !_data) return;
+  const b = _map.getBounds();
+  const inv = _data.locations.filter(s => b.contains([s.lat, s.lng]));
+  const ids = new Set(inv.map(s => s.store_id));
+
+  if (inv.length === 0) {
+    if (_onRecompute) _onRecompute({ n: 0 });
+    return;
+  }
+
+  const rows = (_data.foot_traffic_daily || []).filter(r => ids.has(r.store_id));
+
+  // Build 30-day series (days_ago 29..0)
+  const series = [];
+  const dwellSeries = [];
+  const capSeries = [];
+  for (let d = 29; d >= 0; d--) {
+    const day = rows.filter(r => r.days_ago === d);
+    series.push(day.reduce((a, r) => a + r.visits, 0));
+    dwellSeries.push(day.length
+      ? day.reduce((a, r) => a + r.avg_dwell_min, 0) / day.length
+      : 0);
+    capSeries.push(day.length
+      ? day.reduce((a, r) => a + r.capture_rate, 0) / day.length
+      : 0);
+  }
+
+  const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+  const last7 = arr => avg(arr.slice(-7));
+  const prev7 = arr => avg(arr.slice(-14, -7));
+  const dpct = (a, p) => p ? ((a - p) / p) * 100 : 0;
+
+  const dailyTraffic = last7(series);
+  const trafficDelta = dpct(last7(series), prev7(series));
+  const origins = _data.visitor_origins || [];
+  const visitors = origins.filter(o => ids.has(o.store_id)).reduce((a, o) => a + o.visitors, 0);
+  const dwell = last7(dwellSeries);
+  const dwellDelta = dpct(last7(dwellSeries), prev7(dwellSeries));
+  const cap = last7(capSeries) * 100;
+  const capDelta = dpct(last7(capSeries), prev7(capSeries));
+
+  // Weighted demographics
+  const demoById = (_data.helpers || {}).demoById || {};
+  const BANDS = ['18-24', '25-34', '35-44', '45-54', '55+'];
+  const demRows = inv.map(s => demoById[s.store_id] || null);
+  const wsum = inv.reduce((a, s) => a + (s.base_traffic || 0), 0) || 1;
+
+  const ageAgg = BANDS.map(band =>
+    demRows.reduce((a, d, i) =>
+      a + (d && d.age && d.age[band] != null ? d.age[band] * (inv[i].base_traffic || 0) : 0), 0)
+    / wsum
+  );
+
+  const incAgg = demRows.reduce((a, d, i) =>
+    a + (d && d.median_income != null ? d.median_income * (inv[i].base_traffic || 0) : 0), 0)
+    / wsum;
+
+  // median_age and pct_with_kids may be null in data; derive reasonable fallbacks
+  const ageMed = demRows.reduce((a, d, i) =>
+    a + (d && d.median_age != null ? d.median_age * (inv[i].base_traffic || 0) : 0), 0)
+    / (demRows.filter((d, i) => d && d.median_age != null).reduce((a, _, i) => a + (inv[i].base_traffic || 0), 0) || 1);
+
+  const kidsAgg = demRows.reduce((a, d, i) =>
+    a + (d && d.pct_with_kids != null ? d.pct_with_kids * (inv[i].base_traffic || 0) : 0), 0)
+    / (demRows.filter((d, i) => d && d.pct_with_kids != null).reduce((a, _, i) => a + (inv[i].base_traffic || 0), 0) || 1);
+
+  if (_onRecompute) {
+    _onRecompute({
+      n: inv.length,
+      series, dailyTraffic, trafficDelta,
+      visitors, dwell, dwellDelta, cap, capDelta,
+      bands: BANDS, ageAgg, incAgg, ageMed, kidsAgg,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Store highlight / selection
+// ---------------------------------------------------------------------------
+
+function highlight(id) {
+  for (const [k, m] of Object.entries(_storeMarkers)) {
+    if (k === id) {
+      m.setStyle({ weight: 4, color: '#1B3139' }).setRadius(m._baseR + 3);
+    } else {
+      m.setStyle({ weight: 2, color: '#fff' }).setRadius(m._baseR);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialise the Leaflet map.
+ *
+ * @param {HTMLElement} container  - DOM node (the mapRef.current div)
+ * @param {object}      data       - bootstrap payload from getBootstrap()
+ * @param {object}      opts
+ * @param {function}    opts.onRecompute    - called with inView stats on every moveend + init
+ * @param {function}    opts.onStoreSelect  - called with store object when a pin is clicked
+ */
+export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
+  // Destroy any previous instance (hot-reload safety)
+  if (_map) {
+    _map.remove();
+    _map = null;
+  }
+
+  _data = data;
+  _onRecompute = onRecompute || null;
+  _onStoreSelect = onStoreSelect || null;
+  _layersOn = { stores: true, traffic: true, trade: false, demo: false, competitors: false, pois: false, cross: false };
+
+  const map = L.map(container, {
+    zoomControl: true,
+    attributionControl: true,
+    preferCanvas: true,
+  }).setView(data.META.center, data.META.zoom);
+  _map = map;
+
+  _tile = L.tileLayer(tileUrl('light'), {
+    subdomains: 'abcd',
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+  }).addTo(map);
+
+  map.zoomControl.setPosition('bottomright');
+
+  // Build all layer groups
+  buildStores();
+  buildTraffic();
+  buildTrade();
+  buildDemo();
+  buildCompetitors();
+  buildPois();
+  buildCross();
+
+  // Apply initial visibility
+  applyLayers();
+
+  // Fit bounds to store markers
+  const markerArr = Object.values(_storeMarkers);
+  if (markerArr.length) {
+    const grp = L.featureGroup(markerArr);
+    map.fitBounds(grp.getBounds().pad(0.12));
+  }
+
+  // Pan/zoom triggers KPI recompute
+  map.on('moveend', () => recompute());
+
+  // Initial KPI compute (after a short tick so bounds settle)
+  setTimeout(() => recompute(), 300);
+}
+
+/**
+ * Toggle a named layer on/off and return the new visibility state.
+ */
+export function toggleLayer(key) {
+  _layersOn[key] = !_layersOn[key];
+  applyLayers();
+  return { ..._layersOn };
+}
+
+/**
+ * Fly to a store pin, highlight it, and call onStoreSelect.
+ */
+export function selectStore(id) {
+  _selectedId = id;
+  const s = (_data.helpers || {}).byId ? _data.helpers.byId[id] : null;
+  if (!s || !_map) return;
+  _map.flyTo([s.lat, s.lng], Math.max(_map.getZoom(), 12), { duration: 0.6 });
+  highlight(id);
+  if (_onStoreSelect) _onStoreSelect(s);
+}
+
+/**
+ * Deselect the current store and reset all pin highlights.
+ */
+export function clearStore() {
+  _selectedId = null;
+  for (const [, m] of Object.entries(_storeMarkers)) {
+    m.setStyle({ weight: 2, color: '#fff' }).setRadius(m._baseR);
+  }
+  if (_onStoreSelect) _onStoreSelect(null);
+}
+
+/**
+ * Return a copy of the current layer visibility map.
+ */
+export function getLayersState() {
+  return { ..._layersOn };
+}
+
+/**
+ * Tear down the map (useful for React StrictMode double-mount).
+ */
+export function destroyMap() {
+  if (_map) { _map.remove(); _map = null; }
+  _lg = {};
+  _storeMarkers = {};
+  _data = null;
+  _layersOn = {};
+  _selectedId = null;
+}
