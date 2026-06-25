@@ -431,6 +431,7 @@ class TestLayerContract:
         from backend.layers import get_layer
         result = get_layer("competitors")
         assert len(result["features"]) > 0
+        assert len(result["features"]) == 1
         for row in result["features"]:
             # category is merchandise type (e.g. F&B); the filtering is by poi_type
             assert "name" in row
@@ -457,6 +458,7 @@ class TestLayerContract:
         from backend.layers import get_layer
         result = get_layer("pois")
         assert len(result["features"]) > 0
+        assert len(result["features"]) == 2
         for row in result["features"]:
             assert "name" in row
             assert "category" in row
