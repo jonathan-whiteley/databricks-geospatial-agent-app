@@ -93,9 +93,26 @@ def _row_to_demo(row: dict) -> dict:
 
     age bands use the human-readable keys the design expects (18-24, 25-34, etc).
     median_income comes from the view's median_income_proxy column.
-    median_age and pct_with_kids are not in v_demographics (not in bronze source);
-    they default to None so the frontend can handle gracefully.
+    median_age is derived as weighted midpoint of age bands (not in v_demographics).
+    pct_with_kids is not in v_demographics; always None.
     """
+    # Derive median_age as weighted midpoint of age bands
+    # Midpoints: 18-24=21, 25-34=29.5, 35-44=39.5, 45-54=49.5, 55+=62
+    age_18_24   = row.get("age_18_24")   or 0
+    age_25_34   = row.get("age_25_34")   or 0
+    age_35_44   = row.get("age_35_44")   or 0
+    age_45_54   = row.get("age_45_54")   or 0
+    age_55plus  = row.get("age_55plus")  or 0
+    total_age   = age_18_24 + age_25_34 + age_35_44 + age_45_54 + age_55plus
+    if total_age > 0:
+        median_age = round(
+            (age_18_24 * 21 + age_25_34 * 29.5 + age_35_44 * 39.5 +
+             age_45_54 * 49.5 + age_55plus * 62) / total_age,
+            1,
+        )
+    else:
+        median_age = None
+
     return {
         "store_id": row["store_id"],
         "age": {
@@ -106,8 +123,8 @@ def _row_to_demo(row: dict) -> dict:
             "55+":   row.get("age_55plus"),
         },
         "median_income":  row.get("median_income_proxy"),
-        "median_age":     row.get("median_age"),
-        "pct_with_kids":  row.get("pct_with_kids"),
+        "median_age":     median_age,     # derived from age bands
+        "pct_with_kids":  None,           # not in source data
         # income band breakdown for choropleth
         "income_lt50k":     row.get("income_lt50k"),
         "income_50_100k":   row.get("income_50_100k"),
@@ -216,7 +233,7 @@ def get_layer(name: str) -> dict:
     elif name == "demo":
         rows = run_sql(
             f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
-            f"median_income_proxy, median_age, pct_with_kids, "
+            f"median_income_proxy, "
             f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
             f"FROM {GOLD}.v_demographics"
         )
@@ -224,9 +241,9 @@ def get_layer(name: str) -> dict:
 
     elif name == "competitors":
         rows = run_sql(
-            f"SELECT name, category, lat, lng, distance_mi "
+            f"SELECT name, category, poi_type, lat, lng, distance_mi "
             f"FROM {GOLD}.v_nearby_pois "
-            f"WHERE LOWER(category) = 'competitor'"
+            f"WHERE poi_type = 'competitor'"
         )
         features = [
             {
@@ -241,9 +258,9 @@ def get_layer(name: str) -> dict:
 
     elif name == "pois":
         rows = run_sql(
-            f"SELECT name, category, lat, lng, distance_mi "
+            f"SELECT name, category, poi_type, lat, lng, distance_mi "
             f"FROM {GOLD}.v_nearby_pois "
-            f"WHERE LOWER(category) != 'competitor'"
+            f"WHERE poi_type = 'complement'"
         )
         features = [
             {

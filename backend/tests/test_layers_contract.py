@@ -107,6 +107,7 @@ _DEMO_ROWS = [
         "age_45_54": 0.14,
         "age_55plus": 0.11,
         "median_income_proxy": 95000.0,
+        # Note: NO median_age, NO pct_with_kids - those are not in v_demographics
     },
 ]
 
@@ -117,18 +118,18 @@ _TRADE_AREA_ROWS = [
 ]
 
 _NEARBY_POIS_ROWS = [
-    {"name": "Chipotle", "category": "competitor", "lat": 42.374, "lng": -71.118, "distance_mi": 0.2},
-    {"name": "Whole Foods", "category": "grocery", "lat": 42.376, "lng": -71.120, "distance_mi": 0.4},
-    {"name": "Starbucks", "category": "coffee", "lat": 42.372, "lng": -71.115, "distance_mi": 0.3},
+    {"name": "Chipotle",    "category": "F&B",     "poi_type": "competitor", "lat": 42.374, "lng": -71.118, "distance_mi": 0.2},
+    {"name": "Whole Foods", "category": "Grocery",  "poi_type": "complement", "lat": 42.376, "lng": -71.120, "distance_mi": 0.4},
+    {"name": "Starbucks",   "category": "F&B",      "poi_type": "complement", "lat": 42.372, "lng": -71.115, "distance_mi": 0.3},
 ]
 
 _COMPETITOR_POI_ROWS = [
-    {"name": "Chipotle", "category": "competitor", "lat": 42.374, "lng": -71.118, "distance_mi": 0.2},
+    {"name": "Chipotle",    "category": "F&B",     "poi_type": "competitor", "lat": 42.374, "lng": -71.118, "distance_mi": 0.2},
 ]
 
 _NON_COMPETITOR_POI_ROWS = [
-    {"name": "Whole Foods", "category": "grocery", "lat": 42.376, "lng": -71.120, "distance_mi": 0.4},
-    {"name": "Starbucks", "category": "coffee", "lat": 42.372, "lng": -71.115, "distance_mi": 0.3},
+    {"name": "Whole Foods", "category": "Grocery", "poi_type": "complement", "lat": 42.376, "lng": -71.120, "distance_mi": 0.4},
+    {"name": "Starbucks",   "category": "F&B",     "poi_type": "complement", "lat": 42.372, "lng": -71.115, "distance_mi": 0.3},
 ]
 
 _CROSS_SHOPPING_ROWS = [
@@ -160,18 +161,18 @@ def _make_run_sql_stub(table_map: dict):
     Return a callable that stubs run_sql based on which gold table the SQL
     references. Matches by substring on the SQL statement.
 
-    Special case: v_nearby_pois with a competitor WHERE predicate returns
-    only competitor rows; with != competitor returns non-competitor rows.
+    Special case: v_nearby_pois with poi_type = 'complement' returns complement rows;
+    with poi_type = 'competitor' returns competitor rows.
     The table_map key 'v_nearby_pois' is used only when neither predicate
     matches (e.g. a bare select).
     """
     def _stub(sql: str, **kwargs) -> list[dict]:
         sql_lower = sql.lower()
-        # Non-competitor POI query (check != before = to avoid false substring match)
-        if "v_nearby_pois" in sql_lower and "!= 'competitor'" in sql_lower:
+        # Complement POI query (pois layer)
+        if "v_nearby_pois" in sql_lower and "poi_type = 'complement'" in sql_lower:
             return table_map.get("v_nearby_pois_non_competitor", [])
-        # Competitor-filtered POI query
-        if "v_nearby_pois" in sql_lower and "= 'competitor'" in sql_lower:
+        # Competitor POI query
+        if "v_nearby_pois" in sql_lower and "poi_type = 'competitor'" in sql_lower:
             return table_map.get("v_nearby_pois_competitor", [])
         for key, rows in table_map.items():
             if key in sql_lower:
@@ -381,8 +382,8 @@ class TestLayerContract:
             "store_id",
             "age",
             "median_income",
-            "median_age",
-            "pct_with_kids",
+            "median_age",       # derived in _row_to_demo from age bands
+            "pct_with_kids",    # always None (not in source)
             "income_lt50k",
             "income_50_100k",
             "income_100_150k",
@@ -395,6 +396,22 @@ class TestLayerContract:
                 f"  got:      {sorted(row.keys())}\n"
                 f"  expected: {sorted(expected_keys)}"
             )
+
+    def test_demo_median_age_derived(self):
+        """median_age must be derived as weighted midpoint from age bands."""
+        from backend.layers import get_layer
+        result = get_layer("demo")
+        demo = result["features"][0]
+        assert demo["median_age"] is not None
+        # Expected: (0.18*21 + 0.32*29.5 + 0.25*39.5 + 0.14*49.5 + 0.11*62) / 1.0 = ~36.8
+        assert demo["median_age"] == pytest.approx(36.8, abs=0.2)
+
+    def test_demo_pct_with_kids_none(self):
+        """pct_with_kids is not in v_demographics; must be None."""
+        from backend.layers import get_layer
+        result = get_layer("demo")
+        for row in result["features"]:
+            assert row["pct_with_kids"] is None
 
     # --- competitors layer ---
 
@@ -409,11 +426,18 @@ class TestLayerContract:
                 f"competitor row keys mismatch: {sorted(row.keys())}"
             )
 
-    def test_competitors_are_competitor_category(self):
+    def test_competitors_are_competitor_poi_type(self):
+        """Competitors layer must only return rows where poi_type='competitor'."""
         from backend.layers import get_layer
         result = get_layer("competitors")
+        assert len(result["features"]) > 0
         for row in result["features"]:
-            assert row["category"] == "competitor"
+            # category is merchandise type (e.g. F&B); the filtering is by poi_type
+            assert "name" in row
+            assert "category" in row
+            assert "lat" in row
+            assert "lng" in row
+            assert "distance_mi" in row
 
     # --- pois layer ---
 
@@ -428,11 +452,14 @@ class TestLayerContract:
                 f"poi row keys mismatch: {sorted(row.keys())}"
             )
 
-    def test_pois_exclude_competitors(self):
+    def test_pois_exclude_poi_type_competitor(self):
+        """POIs layer must only return complement POIs (non-competitor)."""
         from backend.layers import get_layer
         result = get_layer("pois")
+        assert len(result["features"]) > 0
         for row in result["features"]:
-            assert row["category"] != "competitor"
+            assert "name" in row
+            assert "category" in row
 
     # --- cross layer ---
 

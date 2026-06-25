@@ -265,12 +265,14 @@ WHERE cs.dest_lat IS NOT NULL
 -- ---------------------------------------------------------------------------
 -- v_nearby_pois
 -- Nearby POIs with distance converted from km to miles.
--- poi_type mapped to a standardized label.
+-- Both category (merchandise type: F&B, Apparel, etc.) and poi_type
+-- (competitor/complement flag) are exposed as separate columns.
 
 CREATE OR REPLACE VIEW clover_spatial_catalog.gold.v_nearby_pois AS
 SELECT
     name,
-    COALESCE(category, poi_type) AS category,
+    category,
+    poi_type,
     lat,
     lon AS lng,
     ROUND(distance_km * 0.621371, 3) AS distance_mi
