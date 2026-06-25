@@ -56,10 +56,14 @@ function buildSparkline(series) {
   const W = 320, H = 84;
   const s = series && series.length ? series : [0];
   const mn = Math.min(...s), mx = Math.max(...s), rng = (mx - mn) || 1;
-  const pts = s.map((v, i) => [
-    ((i / (s.length - 1)) * W).toFixed(1),
-    (H - ((v - mn) / rng) * (H - 8) - 2).toFixed(1),
-  ]);
+  // Guard against a single-point series: duplicate it so we always have at
+  // least 2 points and avoid dividing by (s.length - 1) === 0.
+  const pts = s.length < 2
+    ? [[0, (H - ((s[0] - mn) / rng) * (H - 8) - 2).toFixed(1)], [W, (H - ((s[0] - mn) / rng) * (H - 8) - 2).toFixed(1)]]
+    : s.map((v, i) => [
+        ((i / (s.length - 1)) * W).toFixed(1),
+        (H - ((v - mn) / rng) * (H - 8) - 2).toFixed(1),
+      ]);
   const line = 'M' + pts.map(p => p[0] + ',' + p[1]).join(' L');
   const area = line + ` L${W},${H} L0,${H} Z`;
   return { line, area };
@@ -275,7 +279,12 @@ export default function App() {
         setReady(true);
       });
 
-    return () => { destroyMap(); };
+    return () => {
+      destroyMap();
+      // Reset the guard so a StrictMode re-mount (or future real remount)
+      // reinitializes the map instead of leaving a blank container.
+      mapInitialized.current = false;
+    };
   }, []);
 
   // Scroll Genie to bottom on new messages

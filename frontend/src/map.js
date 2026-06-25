@@ -186,9 +186,18 @@ function buildCompetitors() {
 function buildPois() {
   const grp = L.layerGroup();
   const rows = _data.poi_rows || [];
-  const col = { complementary: '#618794', transit: '#1B3139' };
+  // Keyed on actual backend category values from nearby_pois.
+  // DuBois-palette colors; competitors are handled separately in buildCompetitors.
+  const col = {
+    'F&B':      '#FF5F46', // lava / warm coral
+    'Grocery':  '#00A972', // green
+    'Apparel':  '#7BA3AD', // slate-blue
+    'Fitness':  '#FFAB00', // amber
+    'Beauty':   '#C975B0', // plum
+    'Leisure':  '#618794', // slate (default range)
+  };
   for (const p of rows) {
-    const c = col[p.category] || '#618794';
+    const c = col[p.category] || '#94A3B8'; // fallback slate for unlisted categories
     const icon = L.divIcon({
       className: '',
       iconSize: [12, 12],
@@ -290,30 +299,38 @@ function recompute() {
   const cap = last7(capSeries) * 100;
   const capDelta = dpct(last7(capSeries), prev7(capSeries));
 
-  // Weighted demographics
+  // Weighted demographics - single pass; each metric accumulates its own
+  // numerator and denominator so only stores WITH that field contribute weight.
   const demoById = (_data.helpers || {}).demoById || {};
   const BANDS = ['18-24', '25-34', '35-44', '45-54', '55+'];
   const demRows = inv.map(s => demoById[s.store_id] || null);
-  const wsum = inv.reduce((a, s) => a + (s.base_traffic || 0), 0) || 1;
 
-  const ageAgg = BANDS.map(band =>
-    demRows.reduce((a, d, i) =>
-      a + (d && d.age && d.age[band] != null ? d.age[band] * (inv[i].base_traffic || 0) : 0), 0)
-    / wsum
-  );
+  let wInc = 0, incNum = 0;
+  let wAge = 0, ageNum = 0;
+  let wKids = 0, kidsNum = 0;
+  let wBands = 0;
+  const bandNum = {};
+  demRows.forEach((d, i) => {
+    if (!d) return;
+    const w = inv[i].base_traffic || 0;
+    if (d.median_income != null) { incNum += d.median_income * w; wInc += w; }
+    if (d.median_age != null)    { ageNum += d.median_age * w;    wAge += w; }
+    if (d.pct_with_kids != null) { kidsNum += d.pct_with_kids * w; wKids += w; }
+    if (d.age) {
+      // track band weight only for stores that have an age object
+      wBands += w;
+      BANDS.forEach(b => {
+        if (d.age[b] != null) bandNum[b] = (bandNum[b] || 0) + d.age[b] * w;
+      });
+    }
+  });
 
-  const incAgg = demRows.reduce((a, d, i) =>
-    a + (d && d.median_income != null ? d.median_income * (inv[i].base_traffic || 0) : 0), 0)
-    / wsum;
-
-  // median_age and pct_with_kids may be null in data; derive reasonable fallbacks
-  const ageMed = demRows.reduce((a, d, i) =>
-    a + (d && d.median_age != null ? d.median_age * (inv[i].base_traffic || 0) : 0), 0)
-    / (demRows.filter((d, i) => d && d.median_age != null).reduce((a, _, i) => a + (inv[i].base_traffic || 0), 0) || 1);
-
-  const kidsAgg = demRows.reduce((a, d, i) =>
-    a + (d && d.pct_with_kids != null ? d.pct_with_kids * (inv[i].base_traffic || 0) : 0), 0)
-    / (demRows.filter((d, i) => d && d.pct_with_kids != null).reduce((a, _, i) => a + (inv[i].base_traffic || 0), 0) || 1);
+  const incAgg  = wInc   > 0 ? incNum  / wInc   : 0;
+  const ageMed  = wAge   > 0 ? ageNum  / wAge   : 0;
+  const kidsAgg = wKids  > 0 ? kidsNum / wKids  : 0;
+  // Each band value is a fraction (e.g. 0.22 = 22%); divide by wBands so bands
+  // still sum to ~100% across the weighted in-view stores with demographics.
+  const ageAgg = BANDS.map(b => wBands > 0 ? (bandNum[b] || 0) / wBands : 0);
 
   if (_onRecompute) {
     _onRecompute({
@@ -407,8 +424,11 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
 
 /**
  * Toggle a named layer on/off and return the new visibility state.
+ * If the map is not yet initialized, return the current state unchanged
+ * so the 7-key layersOn object in React is never replaced with a 1-key object.
  */
 export function toggleLayer(key) {
+  if (!_map) return { ..._layersOn };
   _layersOn[key] = !_layersOn[key];
   applyLayers();
   return { ..._layersOn };
