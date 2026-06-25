@@ -236,7 +236,7 @@ function buildCross() {
 function applyLayers() {
   if (!_map) return;
   // bottom to top draw order
-  const ORDER = ['demo', 'cross', 'trade', 'traffic', 'competitors', 'pois', 'stores'];
+  const ORDER = ['cross', 'traffic', 'competitors', 'pois', 'stores'];
   for (const k of ORDER) {
     const on = _layersOn[k];
     const grp = _lg[k];
@@ -379,7 +379,7 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   _data = data;
   _onRecompute = onRecompute || null;
   _onStoreSelect = onStoreSelect || null;
-  _layersOn = { stores: true, traffic: true, trade: false, demo: false, competitors: false, pois: false, cross: false };
+  _layersOn = { stores: true, traffic: true, competitors: false, pois: false, cross: false };
 
   const map = L.map(container, {
     zoomControl: true,
@@ -396,11 +396,11 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
 
   map.zoomControl.setPosition('bottomright');
 
-  // Build all layer groups
+  // Build all layer groups.
+  // Trade-areas and demographics layers are removed for now; buildTraffic still
+  // consumes visitor_origins for the heatmap.
   buildStores();
   buildTraffic();
-  buildTrade();
-  buildDemo();
   buildCompetitors();
   buildPois();
   buildCross();

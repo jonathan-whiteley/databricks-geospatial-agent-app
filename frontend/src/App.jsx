@@ -8,8 +8,6 @@ import GeniePanel from './geniePanel.jsx';
 const LAYER_DEFS = [
   { key: 'stores',      name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
   { key: 'traffic',     name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'trade',       name: 'Trade areas',               table: 'visitor_origins',                  icon: '🧭', iconBg: '#FFEDEA' },
-  { key: 'demo',        name: 'Demographics',              table: 'visitor_demographics - geo_zips',  icon: '🏘️', iconBg: '#E9F1F3' },
   { key: 'competitors', name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
   { key: 'pois',        name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
   { key: 'cross',       name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
@@ -119,7 +117,7 @@ export default function App() {
 
   // Layer toggle state (mirrors map module)
   const [layersOn, setLayersOn] = useState({
-    stores: true, traffic: true, trade: false, demo: false,
+    stores: true, traffic: true,
     competitors: false, pois: false, cross: false,
   });
 
@@ -153,19 +151,18 @@ export default function App() {
           refreshed: m.refreshed || new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
         });
 
-        // Fetch the five overlay layers in parallel; guard each so one failure does not crash
+        // Fetch the overlay layers in parallel; guard each so one failure does not crash.
+        // 'trade' (visitor_origins) is still fetched because the foot-traffic heatmap uses it.
         return Promise.all([
           getLayer('trade').catch(() => []),
-          getLayer('demo').catch(() => []),
           getLayer('competitors').catch(() => []),
           getLayer('pois').catch(() => []),
           getLayer('cross').catch(() => []),
-        ]).then(([tradeRows, demoRows, competitorRows, poisRows, crossRows]) => {
+        ]).then(([tradeRows, competitorRows, poisRows, crossRows]) => {
           // Merge layer data into the bootstrap payload under the field names map.js builders consume
           const merged = {
             ...data,
             visitor_origins: tradeRows,
-            demo_rows: demoRows,
             competitor_rows: competitorRows,
             poi_rows: poisRows,
             cross_rows: crossRows,
