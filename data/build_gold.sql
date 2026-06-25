@@ -231,11 +231,13 @@ SELECT
     MAX(CASE WHEN segment_type='age' AND segment='45-54'       THEN pct_of_visitors END) AS age_45_54,
     MAX(CASE WHEN segment_type='age' AND segment='55+'         THEN pct_of_visitors END) AS age_55plus,
     ROUND(
+        (
         COALESCE(MAX(CASE WHEN segment_type='income' AND segment='<50k'     THEN pct_of_visitors END), 0) * 25000 +
         COALESCE(MAX(CASE WHEN segment_type='income' AND segment='50-100k'  THEN pct_of_visitors END), 0) * 75000 +
         COALESCE(MAX(CASE WHEN segment_type='income' AND segment='100-150k' THEN pct_of_visitors END), 0) * 125000 +
         COALESCE(MAX(CASE WHEN segment_type='income' AND segment='150-200k' THEN pct_of_visitors END), 0) * 175000 +
-        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='200k+'    THEN pct_of_visitors END), 0) * 250000,
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='200k+'    THEN pct_of_visitors END), 0) * 250000
+        ) / 100.0,
         0
     ) AS median_income_proxy
 FROM clover_spatial_catalog.bronze.visitor_demographics
