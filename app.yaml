@@ -1,0 +1,31 @@
+command:
+  - "uvicorn"
+  - "backend.main:app"
+  - "--host"
+  - "0.0.0.0"
+  - "--port"
+  - "8000"
+
+env:
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "f8b3878560d8debf"
+  - name: GENIE_SPACE_ID
+    value: "01f170a989e81c3b9d492d6e298adf8b"
+  - name: SERVING_ENDPOINT
+    value: "databricks-claude-sonnet-4-6"
+  - name: GOLD_SCHEMA
+    value: "gold"
+
+# Resources below document the app's access requirements.
+# NOTE: databricks apps deploy does NOT apply this resources block.
+# Run: databricks apps update clover-geospatial --json @resources.json --profile=fe-vm-clover-spatial
+# THEN redeploy to grant the app service principal the listed permissions.
+resources:
+  - name: "sql-warehouse"
+    sql_warehouse:
+      id: "f8b3878560d8debf"
+      permission: "CAN_USE"
+  - name: "serving-endpoint"
+    serving_endpoint:
+      name: "databricks-claude-sonnet-4-6"
+      permission: "CAN_QUERY"
