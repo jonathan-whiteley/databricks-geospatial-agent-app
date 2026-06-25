@@ -31,38 +31,45 @@ _TYPE_CASTERS = {
 _POLL_INTERVAL = 1.0  # seconds between polls when statement is PENDING/RUNNING
 
 
-def _client() -> WorkspaceClient:
+def _client(profile: str | None = None) -> WorkspaceClient:
     """
     Return a WorkspaceClient.
 
-    Uses explicit profile when DATABRICKS_CONFIG_PROFILE is set or when
-    DATABRICKS_HOST / DATABRICKS_TOKEN are absent (i.e., not running as a
+    When a profile is explicitly supplied it always takes precedence.
+    Otherwise: uses explicit profile when DATABRICKS_CONFIG_PROFILE is set or
+    when DATABRICKS_HOST / DATABRICKS_TOKEN are absent (i.e., not running as a
     Databricks App with injected credentials).
     """
+    if profile is not None:
+        return WorkspaceClient(profile=profile)
+
     host = os.getenv("DATABRICKS_HOST")
     token = os.getenv("DATABRICKS_TOKEN")
-    profile = os.getenv("DATABRICKS_CONFIG_PROFILE", "fe-vm-clover-spatial")
+    env_profile = os.getenv("DATABRICKS_CONFIG_PROFILE", "fe-vm-clover-spatial")
 
     if host and token:
         # Running inside Databricks App - use injected env vars directly.
         return WorkspaceClient()
-    return WorkspaceClient(profile=profile)
+    return WorkspaceClient(profile=env_profile)
 
 
 def _warehouse_id() -> str:
     return os.getenv("DATABRICKS_WAREHOUSE_ID", "f8b3878560d8debf")
 
 
-def run_sql(statement: str) -> list[dict]:
+def run_sql(statement: str, profile: str | None = None) -> list[dict]:
     """
     Execute a SQL statement and return a list of row dicts.
+
+    When profile is provided, constructs the WorkspaceClient with that profile
+    (overriding any env/default). When None, uses the default credential chain.
 
     Waits up to ~50 s for the statement to complete (wait_timeout="50s").
     Falls back to polling if the warehouse responds PENDING or RUNNING.
     Raises RuntimeError on FAILED or CANCELLED.
     Returns an empty list for statements that produce no rows.
     """
-    w = _client()
+    w = _client(profile)
     wh_id = _warehouse_id()
 
     resp = w.statement_execution.execute_statement(
@@ -107,13 +114,16 @@ def run_sql(statement: str) -> list[dict]:
     return rows
 
 
-def exec_sql(statement: str) -> None:
+def exec_sql(statement: str, profile: str | None = None) -> None:
     """
     Execute a SQL statement and discard results.
 
+    When profile is provided, constructs the WorkspaceClient with that profile
+    (overriding any env/default). When None, uses the default credential chain.
+
     Useful for DDL (CREATE TABLE, DROP TABLE, etc.) and DML (INSERT, MERGE).
     """
-    w = _client()
+    w = _client(profile)
     wh_id = _warehouse_id()
 
     resp = w.statement_execution.execute_statement(

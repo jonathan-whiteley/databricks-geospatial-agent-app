@@ -13,6 +13,8 @@ Run from project root:
 from __future__ import annotations
 
 import sys
+from collections import defaultdict
+from datetime import date as _date
 
 from data.config import CATALOG, BRONZE, GOLD, GOLD_SCHEMA
 from data.generate_fleet import (
@@ -175,26 +177,6 @@ def write_locations(fleet: list[dict]) -> None:
 
 # ── Step 4: read real bronze FTD rows and generate synthetic rows ──────────────
 
-def _build_gold_ftd_row(store_id: str, r: dict) -> dict:
-    """Convert a bronze or generated daily row into a gold foot_traffic_daily row."""
-    visits = r.get("visits", 0) or 0
-    unique_visitors = r.get("unique_visitors", 0) or 0
-    capture_rate = (unique_visitors / visits) if visits else None
-    return {
-        "store_id":         store_id,
-        "date":             r["date"],
-        "dow":              int(r["dow"]),
-        "is_weekend":       bool(r["is_weekend"]),
-        "visits":           int(visits),
-        "unique_visitors":  int(unique_visitors),
-        "avg_dwell_min":    float(r["avg_dwell_min"]),
-        "visits_morning":   int(r.get("visits_morning", 0) or 0),
-        "visits_afternoon": int(r.get("visits_afternoon", 0) or 0),
-        "visits_evening":   int(r.get("visits_evening", 0) or 0),
-        "capture_rate":     round(capture_rate, 4) if capture_rate is not None else None,
-    }
-
-
 def write_foot_traffic(real_stores: list[dict], synth_stores: list[dict]) -> None:
     exec_sql(f"""
         CREATE OR REPLACE TABLE {GOLD}.foot_traffic_daily (
@@ -214,7 +196,6 @@ def write_foot_traffic(real_stores: list[dict], synth_stores: list[dict]) -> Non
     """)
 
     # Real store rows: copy from bronze (map location_id to store_id).
-    real_id_map = {s["store_id"]: s["store_id"] for s in real_stores}
     # store_id in real_stores == location_id from bronze (we mapped it in load_real_stores).
     real_ids_sql = ", ".join(_esc(s["store_id"]) for s in real_stores)
 
@@ -263,7 +244,6 @@ def write_foot_traffic(real_stores: list[dict], synth_stores: list[dict]) -> Non
             visits = r["visits"] or 0
             unique_visitors = r["unique_visitors"] or 0
             capture_rate = (unique_visitors / visits) if visits else None
-            from datetime import date as _date
             row_date = _date.fromisoformat(r["date"])
             days_ago_val = (REFERENCE_DATE - row_date).days
             synth_gold_rows.append({
@@ -306,15 +286,15 @@ def write_labor_schedule(fleet: list[dict], daily_all: list[dict]) -> None:
         )
     """)
 
-    # Build a lookup: store_id -> most recent visits for scheduling.
-    latest_visits: dict[str, int] = {}
+    # Build a lookup: store_id -> visits on the most recent date in the daily series.
+    rows_by_store: dict[str, list[dict]] = defaultdict(list)
     for row in daily_all:
-        sid = row["store_id"]
-        if sid not in latest_visits:
-            latest_visits[sid] = row["visits"]
-        else:
-            # Keep largest date by relying on append order (latest appended last).
-            latest_visits[sid] = row["visits"]
+        rows_by_store[row["store_id"]].append(row)
+
+    latest_visits: dict[str, int] = {
+        sid: max(rows, key=lambda r: r["date"])["visits"]
+        for sid, rows in rows_by_store.items()
+    }
 
     store_map = {s["store_id"]: s for s in fleet}
 
