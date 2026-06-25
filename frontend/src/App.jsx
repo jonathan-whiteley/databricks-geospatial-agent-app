@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
-import { getBootstrap } from './api.js';
+import { getBootstrap, getLayer } from './api.js';
 import { initMap, toggleLayer as mapToggleLayer, selectStore as mapSelectStore, clearStore as mapClearStore, destroyMap } from './map.js';
 
 // ---------- Static layer definitions (UI metadata only) ----------
@@ -240,15 +240,34 @@ export default function App() {
           refreshed: m.refreshed || new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
         });
 
-        // Init Leaflet map
-        if (mapRef.current) {
-          initMap(mapRef.current, data, {
-            onRecompute: (iv) => setInView(iv),
-            onStoreSelect: (store) => setSelectedStore(store),
-          });
-        }
+        // Fetch the five overlay layers in parallel; guard each so one failure does not crash
+        return Promise.all([
+          getLayer('trade').catch(() => []),
+          getLayer('demo').catch(() => []),
+          getLayer('competitors').catch(() => []),
+          getLayer('pois').catch(() => []),
+          getLayer('cross').catch(() => []),
+        ]).then(([tradeRows, demoRows, competitorRows, poisRows, crossRows]) => {
+          // Merge layer data into the bootstrap payload under the field names map.js builders consume
+          const merged = {
+            ...data,
+            visitor_origins: tradeRows,
+            demo_rows: demoRows,
+            competitor_rows: competitorRows,
+            poi_rows: poisRows,
+            cross_rows: crossRows,
+          };
 
-        setReady(true);
+          // Init Leaflet map with merged data
+          if (mapRef.current) {
+            initMap(mapRef.current, merged, {
+              onRecompute: (iv) => setInView(iv),
+              onStoreSelect: (store) => setSelectedStore(store),
+            });
+          }
+
+          setReady(true);
+        });
       })
       .catch(err => {
         console.error('Bootstrap failed:', err);

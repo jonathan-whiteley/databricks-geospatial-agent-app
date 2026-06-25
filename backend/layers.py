@@ -232,12 +232,19 @@ def get_layer(name: str) -> dict:
 
     elif name == "demo":
         rows = run_sql(
-            f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
-            f"median_income_proxy, "
-            f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
-            f"FROM {GOLD}.v_demographics"
+            f"SELECT d.store_id, d.age_18_24, d.age_25_34, d.age_35_44, d.age_45_54, d.age_55plus, "
+            f"d.median_income_proxy, "
+            f"d.income_lt50k, d.income_50_100k, d.income_100_150k, d.income_150_200k, d.income_gt200k, "
+            f"s.lat, s.lon "
+            f"FROM {GOLD}.v_demographics d "
+            f"JOIN {GOLD}.store_ops s ON d.store_id = s.store_id"
         )
-        features = [_row_to_demo(r) for r in rows]
+        features = []
+        for r in rows:
+            d = _row_to_demo(r)
+            d["lat"] = r["lat"]
+            d["lng"] = r["lon"]   # rename lon -> lng
+            features.append(d)
 
     elif name == "competitors":
         rows = run_sql(

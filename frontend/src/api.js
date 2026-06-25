@@ -28,10 +28,15 @@ export async function getBootstrap() {
 /**
  * GET /api/layers/{name}
  * name in: stores, traffic, trade, demo, competitors, pois, cross
- * Returns { features: [...] }
+ * Returns a normalized array of row objects regardless of server envelope shape.
+ * Handles: { features: [...] }, { rows: [...] }, or a bare array.
  */
 export async function getLayer(name) {
-  return _json(await fetch(`${BASE}/layers/${encodeURIComponent(name)}`));
+  const payload = await _json(await fetch(`${BASE}/layers/${encodeURIComponent(name)}`));
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload.features)) return payload.features;
+  if (Array.isArray(payload.rows)) return payload.rows;
+  return [];
 }
 
 /**

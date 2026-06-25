@@ -107,6 +107,8 @@ _DEMO_ROWS = [
         "age_45_54": 0.14,
         "age_55plus": 0.11,
         "median_income_proxy": 95000.0,
+        "lat": 42.3736,
+        "lon": -71.1190,
         # Note: NO median_age, NO pct_with_kids - those are not in v_demographics
     },
 ]
@@ -174,6 +176,9 @@ def _make_run_sql_stub(table_map: dict):
         # Competitor POI query
         if "v_nearby_pois" in sql_lower and "poi_type = 'competitor'" in sql_lower:
             return table_map.get("v_nearby_pois_competitor", [])
+        # Demo layer JOIN query (v_demographics JOIN store_ops): check before generic loop
+        if "v_demographics" in sql_lower and "store_ops" in sql_lower:
+            return table_map.get("v_demographics", [])
         for key, rows in table_map.items():
             if key in sql_lower:
                 return rows
@@ -389,6 +394,8 @@ class TestLayerContract:
             "income_100_150k",
             "income_150_200k",
             "income_gt200k",
+            "lat",
+            "lng",
         }
         for row in rows:
             assert set(row.keys()) == expected_keys, (
@@ -396,6 +403,23 @@ class TestLayerContract:
                 f"  got:      {sorted(row.keys())}\n"
                 f"  expected: {sorted(expected_keys)}"
             )
+
+    def test_demo_layer_has_coords(self):
+        """Demo layer rows must include lat and lng from the store_ops JOIN."""
+        from backend.layers import get_layer
+        result = get_layer("demo")
+        for row in result["features"]:
+            assert "lat" in row
+            assert "lng" in row
+            assert row["lat"] is not None
+            assert row["lng"] is not None
+
+    def test_demo_layer_has_median_income(self):
+        """Demo layer rows must include median_income (aliased from median_income_proxy)."""
+        from backend.layers import get_layer
+        result = get_layer("demo")
+        for row in result["features"]:
+            assert "median_income" in row
 
     def test_demo_median_age_derived(self):
         """median_age must be derived as weighted midpoint from age bands."""

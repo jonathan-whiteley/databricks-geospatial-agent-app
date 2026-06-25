@@ -145,20 +145,20 @@ function buildTrade() {
 
 function buildDemo() {
   const grp = L.layerGroup();
-  const geoZips = _data.geo_zips || [];
-  if (geoZips.length === 0) { _lg.demo = grp; return; }
-  const incomes = geoZips.map(z => z.median_income);
+  const demoRows = (_data.demo_rows || []).filter(r => r.lat != null && r.lng != null && r.median_income != null);
+  if (demoRows.length === 0) { _lg.demo = grp; return; }
+  const incomes = demoRows.map(r => r.median_income);
   const lo = Math.min(...incomes);
   const hi = Math.max(...incomes);
   const scale = ['#E3EAEC', '#A9C2C9', '#7BA3AD', '#4E7C8A', '#1B5162'];
-  for (const z of geoZips) {
-    const t = (z.median_income - lo) / (hi - lo || 1);
+  for (const r of demoRows) {
+    const t = (r.median_income - lo) / (hi - lo || 1);
     const col = scale[Math.min(scale.length - 1, Math.floor(t * scale.length))];
     grp.addLayer(
-      L.circle([z.lat, z.lng], {
+      L.circle([r.lat, r.lng], {
         radius: 2400, fillColor: col, color: col, weight: 1, fillOpacity: 0.45,
       }).bindTooltip(
-        `ZIP ${z.zip} - $${(z.median_income / 1000).toFixed(0)}k median`,
+        `Store ${r.store_id} - $${(r.median_income / 1000).toFixed(0)}k median income`,
         { className: 'cv-tt' }
       )
     );
@@ -168,9 +168,8 @@ function buildDemo() {
 
 function buildCompetitors() {
   const grp = L.layerGroup();
-  const pois = _data.nearby_pois || [];
-  for (const p of pois) {
-    if (p.category !== 'competitor') continue;
+  const rows = _data.competitor_rows || [];
+  for (const p of rows) {
     const icon = L.divIcon({
       className: '',
       iconSize: [16, 16],
@@ -186,10 +185,9 @@ function buildCompetitors() {
 
 function buildPois() {
   const grp = L.layerGroup();
-  const pois = _data.nearby_pois || [];
+  const rows = _data.poi_rows || [];
   const col = { complementary: '#618794', transit: '#1B3139' };
-  for (const p of pois) {
-    if (p.category === 'competitor') continue;
+  for (const p of rows) {
     const c = col[p.category] || '#618794';
     const icon = L.divIcon({
       className: '',
@@ -206,7 +204,7 @@ function buildPois() {
 
 function buildCross() {
   const grp = L.layerGroup();
-  const cross = _data.cross_shopping || [];
+  const cross = _data.cross_rows || [];
   if (cross.length === 0) { _lg.cross = grp; return; }
   const max = Math.max(...cross.map(c => c.shared_visitors));
   for (const c of cross) {
