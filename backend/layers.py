@@ -153,7 +153,12 @@ def get_bootstrap() -> dict:
     foot_traffic_daily = [_row_to_traffic_row(r) for r in ft_rows]
 
     # -- demographics from gold.v_demographics --
-    demo_rows = run_sql(f"SELECT * FROM {GOLD}.v_demographics")
+    demo_rows = run_sql(
+        f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
+        f"median_income_proxy, median_age, pct_with_kids, "
+        f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
+        f"FROM {GOLD}.v_demographics"
+    )
     demo_by_id: dict[str, dict] = {}
     for row in demo_rows:
         d = _row_to_demo(row)
@@ -187,7 +192,13 @@ def get_layer(name: str) -> dict:
     Supported names: traffic, trade, demo, competitors, pois, cross.
     Raises ValueError for unknown names.
     """
-    if name == "trade":
+    if name == "stores":
+        store_rows = run_sql(
+            f"SELECT {_STORE_OPS_COLS} FROM {GOLD}.store_ops"
+        )
+        features = [_row_to_location(r) for r in store_rows]
+
+    elif name == "trade":
         rows = run_sql(
             f"SELECT store_id, origin_lat, origin_lng, visitors "
             f"FROM {GOLD}.v_trade_areas"
@@ -203,7 +214,12 @@ def get_layer(name: str) -> dict:
         ]
 
     elif name == "demo":
-        rows = run_sql(f"SELECT * FROM {GOLD}.v_demographics")
+        rows = run_sql(
+            f"SELECT store_id, age_18_24, age_25_34, age_35_44, age_45_54, age_55plus, "
+            f"median_income_proxy, median_age, pct_with_kids, "
+            f"income_lt50k, income_50_100k, income_100_150k, income_150_200k, income_gt200k "
+            f"FROM {GOLD}.v_demographics"
+        )
         features = [_row_to_demo(r) for r in rows]
 
     elif name == "competitors":

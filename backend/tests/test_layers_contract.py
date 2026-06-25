@@ -377,10 +377,24 @@ class TestLayerContract:
         assert "features" in result
         rows = result["features"]
         assert len(rows) > 0
-        required = {"store_id", "median_income"}
+        expected_keys = {
+            "store_id",
+            "age",
+            "median_income",
+            "median_age",
+            "pct_with_kids",
+            "income_lt50k",
+            "income_50_100k",
+            "income_100_150k",
+            "income_150_200k",
+            "income_gt200k",
+        }
         for row in rows:
-            for k in required:
-                assert k in row, f"demo row missing key '{k}': {row.keys()}"
+            assert set(row.keys()) == expected_keys, (
+                f"demo row keys mismatch.\n"
+                f"  got:      {sorted(row.keys())}\n"
+                f"  expected: {sorted(expected_keys)}"
+            )
 
     # --- competitors layer ---
 
@@ -454,6 +468,37 @@ class TestLayerContract:
         result = get_layer("traffic")
         for row in result["features"]:
             assert row["weight"] > 0
+
+    # --- stores layer ---
+
+    def test_stores_layer_keys(self):
+        """Stores layer features must have exactly the location contract key set (lng not lon)."""
+        from backend.layers import get_layer
+        result = get_layer("stores")
+        assert "features" in result
+        rows = result["features"]
+        assert len(rows) > 0
+        expected_keys = {
+            "store_id", "name", "format", "zip", "sqft",
+            "lat", "lng",
+            "recent_visits", "base_traffic", "forecast_visits",
+            "scheduled_hours", "ideal_hours", "labor_gap",
+            "staffing_status", "traffic_delta_pct", "anomaly_driver",
+        }
+        for row in rows:
+            assert set(row.keys()) == expected_keys, (
+                f"stores feature keys mismatch.\n"
+                f"  got:      {sorted(row.keys())}\n"
+                f"  expected: {sorted(expected_keys)}"
+            )
+
+    def test_stores_layer_no_lon_key(self):
+        """Stores layer must expose lng not lon."""
+        from backend.layers import get_layer
+        result = get_layer("stores")
+        for row in result["features"]:
+            assert "lon" not in row, "stores feature must use 'lng' not 'lon'"
+            assert "lng" in row
 
     # --- unknown layer raises ---
 
