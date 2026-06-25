@@ -28,7 +28,7 @@ dow_means AS (
     SELECT
         store_id,
         dow,
-        CAST(ROUND(AVG(visits)) AS INT) AS mean_visits
+        ROUND(AVG(CAST(visits AS DOUBLE)), 0) AS mean_visits
     FROM window_8w
     GROUP BY store_id, dow
 ),
@@ -48,7 +48,7 @@ next_dow AS (
 )
 SELECT
     d.store_id,
-    COALESCE(m.mean_visits, 0) AS forecast_visits
+    COALESCE(m.mean_visits, 0.0) AS forecast_visits
 FROM next_dow d
 LEFT JOIN dow_means m
     ON d.store_id = m.store_id

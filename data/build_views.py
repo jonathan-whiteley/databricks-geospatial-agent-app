@@ -64,7 +64,7 @@ def build_forecast() -> None:
         print("[build_views] Running build_forecast.sql (ai_forecast) ...")
         _run_statements(primary_sql, "forecast")
         print("[build_views] store_forecast built via ai_forecast.")
-    except RuntimeError as exc:
+    except Exception as exc:
         print(f"[build_views] ai_forecast failed: {exc}")
         print("[build_views] Falling back to build_forecast_fallback.sql (DOW-seasonal mean) ...")
         fallback_sql = _load_sql("build_forecast_fallback.sql")

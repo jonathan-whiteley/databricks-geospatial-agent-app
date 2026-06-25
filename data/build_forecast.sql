@@ -49,5 +49,5 @@ exploded AS (
 )
 SELECT
     store_id,
-    CAST(ROUND(forecast) AS INT) AS forecast_visits
+    ROUND(forecast, 0) AS forecast_visits
 FROM exploded;

@@ -48,7 +48,7 @@ delta AS (
         t.store_id,
         CASE
             WHEN p.prior_7d_mean IS NULL OR p.prior_7d_mean = 0 THEN 0.0
-            ELSE ROUND(((t.recent_7d_mean - p.prior_7d_mean) / p.prior_7d_mean) * 100.0, 2)
+            ELSE ROUND(((t.recent_7d_mean - p.prior_7d_mean) / p.prior_7d_mean) * 100.0, 1)
         END AS raw_delta_pct
     FROM trailing_7 t
     LEFT JOIN prior_7 p ON t.store_id = p.store_id
@@ -144,7 +144,8 @@ SELECT
     traffic_delta_pct,
     anomaly_driver
 FROM clover_spatial_catalog.gold.store_ops
-WHERE traffic_delta_pct < -8;
+WHERE traffic_delta_pct < -8
+ORDER BY traffic_delta_pct ASC;
 
 
 -- ---------------------------------------------------------------------------
@@ -187,8 +188,8 @@ coverage_base AS (
 )
 SELECT
     d.daypart,
-    ROUND(d.demand_index, 4) AS demand_index,
-    ROUND(c.shift_weight, 4) AS coverage_index,
+    CAST(ROUND(d.demand_index, 4) AS STRING) AS demand_index,
+    CAST(ROUND(c.shift_weight, 4) AS STRING) AS coverage_index,
     CASE
         WHEN c.shift_weight < d.demand_index - 0.05 THEN 'under-covered'
         ELSE 'ok'
@@ -215,29 +216,33 @@ WHERE vo.zip_lat IS NOT NULL
 
 -- ---------------------------------------------------------------------------
 -- v_demographics
--- Pivoted demographics: age and income bands per store, plus income midpoint.
+-- Wide-pivot demographics: one row per store with income/age band columns
+-- plus a weighted median income proxy.
 -- Only CLV-001, CLV-002, CLV-003 have bronze data.
 
 CREATE OR REPLACE VIEW clover_spatial_catalog.gold.v_demographics AS
 SELECT
     location_id AS store_id,
-    segment_type,
-    segment,
-    pct_of_visitors,
-    -- Income midpoint proxy (NULL for age segments).
-    CASE
-        WHEN segment_type = 'income' THEN
-            CASE segment
-                WHEN '<50k'      THEN 25000.0
-                WHEN '50-100k'   THEN 75000.0
-                WHEN '100-150k'  THEN 125000.0
-                WHEN '150-200k'  THEN 175000.0
-                WHEN '200k+'     THEN 225000.0
-                ELSE NULL
-            END
-        ELSE NULL
-    END AS income_midpoint
-FROM clover_spatial_catalog.bronze.visitor_demographics;
+    MAX(CASE WHEN segment_type='income' AND segment='<50k'     THEN pct_of_visitors END) AS income_lt50k,
+    MAX(CASE WHEN segment_type='income' AND segment='50-100k'  THEN pct_of_visitors END) AS income_50_100k,
+    MAX(CASE WHEN segment_type='income' AND segment='100-150k' THEN pct_of_visitors END) AS income_100_150k,
+    MAX(CASE WHEN segment_type='income' AND segment='150-200k' THEN pct_of_visitors END) AS income_150_200k,
+    MAX(CASE WHEN segment_type='income' AND segment='200k+'    THEN pct_of_visitors END) AS income_gt200k,
+    MAX(CASE WHEN segment_type='age' AND segment='18-24'       THEN pct_of_visitors END) AS age_18_24,
+    MAX(CASE WHEN segment_type='age' AND segment='25-34'       THEN pct_of_visitors END) AS age_25_34,
+    MAX(CASE WHEN segment_type='age' AND segment='35-44'       THEN pct_of_visitors END) AS age_35_44,
+    MAX(CASE WHEN segment_type='age' AND segment='45-54'       THEN pct_of_visitors END) AS age_45_54,
+    MAX(CASE WHEN segment_type='age' AND segment='55+'         THEN pct_of_visitors END) AS age_55plus,
+    ROUND(
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='<50k'     THEN pct_of_visitors END), 0) * 25000 +
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='50-100k'  THEN pct_of_visitors END), 0) * 75000 +
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='100-150k' THEN pct_of_visitors END), 0) * 125000 +
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='150-200k' THEN pct_of_visitors END), 0) * 175000 +
+        COALESCE(MAX(CASE WHEN segment_type='income' AND segment='200k+'    THEN pct_of_visitors END), 0) * 250000,
+        0
+    ) AS median_income_proxy
+FROM clover_spatial_catalog.bronze.visitor_demographics
+GROUP BY location_id;
 
 
 -- ---------------------------------------------------------------------------
