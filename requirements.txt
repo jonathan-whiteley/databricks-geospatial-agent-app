@@ -1,0 +1,7 @@
+fastapi==0.115.*
+uvicorn[standard]==0.32.*
+databricks-sdk==0.39.*
+databricks-sql-connector==3.6.*
+pydantic==2.*
+httpx==0.27.*
+pytest==8.*
