@@ -19,6 +19,8 @@ import re
 import sys
 from typing import Any
 
+from backend.db import get_workspace_client
+
 log = logging.getLogger(__name__)
 
 # ---- constants ---------------------------------------------------------------
@@ -46,17 +48,6 @@ def _serving_endpoint() -> str:
         return _EP
     except Exception:
         return "databricks-claude-sonnet-4-6"
-
-
-def _client():
-    """Return a WorkspaceClient using the same auth logic as backend/db.py."""
-    from databricks.sdk import WorkspaceClient  # noqa: PLC0415
-    host = os.getenv("DATABRICKS_HOST")
-    token = os.getenv("DATABRICKS_TOKEN")
-    if host and token:
-        return WorkspaceClient()
-    profile = os.getenv("DATABRICKS_CONFIG_PROFILE", "fe-vm-clover-spatial")
-    return WorkspaceClient(profile=profile)
 
 
 def _rows_to_text(rows: list[Any], columns: list[str] | None = None) -> str:
@@ -88,9 +79,9 @@ def _strip_dashes(text: str) -> str:
     """
     Remove em dashes and en dashes; replace space-dash-space with a semicolon.
     """
-    # Replace en dash and em dash surrounded by spaces with semicolon.
-    text = re.sub(r"\s+[--]\s+", "; ", text)
-    # Remove any remaining em/en dashes.
+    # Replace em dash (U+2014) or en dash (U+2013) surrounded by spaces with semicolon.
+    text = re.sub(r"\s+[—–]\s+", "; ", text)
+    # Remove any remaining em/en dash characters not caught above.
     text = text.replace("—", "").replace("–", "")
     return text.strip()
 
@@ -131,7 +122,7 @@ def next_best_action(
 
     try:
         from databricks.sdk.service.serving import ChatMessage, ChatMessageRole  # noqa: PLC0415
-        w = _client()
+        w = get_workspace_client()
         response = w.serving_endpoints.query(
             name=endpoint,
             messages=[

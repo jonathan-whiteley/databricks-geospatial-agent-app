@@ -21,8 +21,9 @@ import os
 import time
 from pathlib import Path
 
-from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.dashboards import MessageStatus
+
+from backend.db import get_workspace_client
 
 log = logging.getLogger(__name__)
 
@@ -33,16 +34,6 @@ _FALLBACK_SPACE_ID = "01f170a989e81c3b9d492d6e298adf8b"
 _POLL_SLEEP = 2.0  # seconds between status polls
 _TERMINAL_OK = {MessageStatus.COMPLETED}
 _TERMINAL_BAD = {MessageStatus.FAILED, MessageStatus.CANCELLED, MessageStatus.QUERY_RESULT_EXPIRED}
-
-
-def _client() -> WorkspaceClient:
-    """Return a WorkspaceClient using the same auth logic as backend/db.py."""
-    host = os.getenv("DATABRICKS_HOST")
-    token = os.getenv("DATABRICKS_TOKEN")
-    if host and token:
-        return WorkspaceClient()
-    profile = os.getenv("DATABRICKS_CONFIG_PROFILE", "fe-vm-clover-spatial")
-    return WorkspaceClient(profile=profile)
 
 
 def _space_id() -> str:
@@ -95,7 +86,7 @@ def ask_genie(question: str, conversation_id: str | None = None) -> dict:
     timeout_s = _timeout()
 
     try:
-        w = _client()
+        w = get_workspace_client()
     except Exception as exc:
         log.error("Genie: failed to build WorkspaceClient: %s", exc)
         return _empty_result(f"Could not connect to Databricks: {exc}")
@@ -169,7 +160,7 @@ def ask_genie(question: str, conversation_id: str | None = None) -> dict:
             sql_query = getattr(query_att, "query", None)
             query_attachment_id = getattr(att, "attachment_id", None) or getattr(query_att, "id", None)
 
-    combined_text = "\n\n".join(text_parts).strip() or question
+    combined_text = "\n\n".join(text_parts).strip()
 
     if sql_query is None or query_attachment_id is None:
         # Text-only answer (no SQL generated).

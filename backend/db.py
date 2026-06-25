@@ -53,6 +53,11 @@ def _client(profile: str | None = None) -> WorkspaceClient:
     return WorkspaceClient(profile=env_profile)
 
 
+def get_workspace_client(profile: str | None = None) -> WorkspaceClient:
+    """Public wrapper around _client(); returns a WorkspaceClient."""
+    return _client(profile)
+
+
 def _warehouse_id() -> str:
     return os.getenv("DATABRICKS_WAREHOUSE_ID", "f8b3878560d8debf")
 
