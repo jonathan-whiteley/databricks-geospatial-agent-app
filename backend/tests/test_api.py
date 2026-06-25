@@ -219,6 +219,41 @@ class TestAnalytics:
         resp = client.post("/api/analytics", json={"bbox": "not-a-list"})
         assert resp.status_code == 422
 
+    def test_bbox_wrong_length_returns_422(self, monkeypatch):
+        # bbox with fewer than 4 elements must be rejected at validation time (422),
+        # not reach the route handler at all.
+        client = _make_client(monkeypatch, bootstrap=_BOOTSTRAP_PAYLOAD)
+        resp = client.post("/api/analytics", json={"bbox": [1.0]})
+        assert resp.status_code == 422
+
+    def test_lng_to_lon_remap_end_to_end(self, monkeypatch):
+        """
+        Exercises the lng->lon remap in the /api/analytics route end-to-end.
+
+        Only backend.layers.get_bootstrap is patched; compute_in_view runs for
+        real. The bootstrap payload has stores with key "lng" (the JS contract).
+        The route remaps them to add "lon" before passing to compute_in_view,
+        which reads s["lon"] at line:
+            in_view = [s for s in stores if in_bbox(s["lat"], s["lon"], bbox)]
+
+        If the remap were removed, compute_in_view would raise KeyError("lon")
+        and the route would return 500 instead of 200.
+
+        The bbox (42.0, -71.5, 42.7, -70.5) contains S001 at (42.36, -71.06)
+        but not S099 at (40.0, -70.0), so n >= 1 confirms the store was found.
+        """
+        import backend.layers as _layers
+
+        monkeypatch.setattr(_layers, "get_bootstrap", lambda: _BOOTSTRAP_PAYLOAD)
+
+        from backend.main import app
+        client = TestClient(app)
+
+        resp = client.post("/api/analytics", json={"bbox": [42.0, -71.5, 42.7, -70.5]})
+        assert resp.status_code == 200, f"expected 200, got {resp.status_code}: {resp.text}"
+        body = resp.json()
+        assert body["n"] >= 1, f"expected at least 1 store in view, got n={body['n']}"
+
 
 class TestGenieAsk:
     def test_returns_sql_and_rows(self, monkeypatch):

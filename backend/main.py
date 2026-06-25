@@ -24,14 +24,13 @@ hurt when present.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from backend import action, analytics, genie, layers
 
@@ -67,6 +66,13 @@ app.add_middleware(
 
 class AnalyticsRequest(BaseModel):
     bbox: list[float]  # [south, west, north, east]
+
+    @field_validator("bbox")
+    @classmethod
+    def bbox_must_have_four_elements(cls, v: list[float]) -> list[float]:
+        if len(v) != 4:
+            raise ValueError(f"bbox must have exactly 4 elements, got {len(v)}")
+        return v
 
 
 class GenieAskRequest(BaseModel):
