@@ -31,7 +31,7 @@ const GENIE_SEED = [
       ],
     },
     callout: {
-      icon: 'Lightning',
+      icon: '⚡',
       label: 'Action:',
       text: 'Cover ~23 labor-hours tomorrow. 2 overstaffed stores have ~14h of slack you can reallocate.',
       bg: '#FFF1EE',
