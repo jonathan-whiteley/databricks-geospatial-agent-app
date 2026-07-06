@@ -109,11 +109,11 @@ export default function ArchitecturePanel({ onClose }) {
       subLabel: 'clover_spatial_catalog.bronze',
       color: LAYER_COLORS.source,
       nodes: [
-        { icon: '📍', title: 'Store Locations',       mono: 'locations · lat/lon/geom' },
-        { icon: '🚶', title: 'Foot Traffic Daily',    mono: 'foot_traffic_daily' },
-        { icon: '👥', title: 'Visitor Demographics',  mono: 'visitor_demographics' },
-        { icon: '🎯', title: 'Competitors & POIs',    mono: 'nearby_pois' },
-        { icon: '🗺️', title: 'Geo Boundaries',        mono: 'geo_zips · geo_counties (polygons)' },
+        { icon: '📍', title: 'Store Locations',       mono: 'Clover store master' },
+        { icon: '🚶', title: 'Foot Traffic',          mono: 'SafeGraph mobility' },
+        { icon: '👥', title: 'Visitor Demographics',  mono: 'US Census · ACS' },
+        { icon: '🎯', title: 'Competitors & POIs',    mono: 'OpenStreetMap' },
+        { icon: '🗺️', title: 'Geo Boundaries',        mono: 'US Census · TIGER/ZCTA' },
       ],
     },
     {

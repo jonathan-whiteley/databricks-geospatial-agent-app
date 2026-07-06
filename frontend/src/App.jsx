@@ -7,12 +7,12 @@ import ArchitecturePanel from './ArchitecturePanel.jsx';
 // ---------- Static layer definitions (UI metadata only) ----------
 
 const LAYER_DEFS = [
-  { key: 'stores',        name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
-  { key: 'traffic',       name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'zip_choropleth',name: 'Visitors by ZIP',           table: 'geo_zips · ST_Contains',           icon: '🗺️', iconBg: '#E9F1F3' },
-  { key: 'competitors',   name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
-  { key: 'pois',          name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
-  { key: 'cross',         name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
+  { key: 'stores',        name: 'Store locations',           source: 'Clover store master',        icon: '📍', iconBg: '#FFEDEA' },
+  { key: 'traffic',       name: 'Foot traffic heatmap',      source: 'SafeGraph mobility · H3',     icon: '🔥', iconBg: '#FFF3E6' },
+  { key: 'zip_choropleth',name: 'Visitors by ZIP',           source: 'US Census · ZCTA',            icon: '🗺️', iconBg: '#E9F1F3' },
+  { key: 'competitors',   name: 'Competitors',               source: 'OpenStreetMap',               icon: '🎯', iconBg: '#F6E4E7' },
+  { key: 'pois',          name: 'Nearby POIs',               source: 'OpenStreetMap',               icon: '🏬', iconBg: '#EEF1F4' },
+  { key: 'cross',         name: 'Cross-shopping',            source: 'SafeGraph co-visits',         icon: '🔗', iconBg: '#EEF1F4' },
 ];
 
 
@@ -65,6 +65,9 @@ function LayerRow({ def, active, onToggle }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: '600 13px var(--font-sans)', color: 'var(--db-navy)' }}>{def.name}</div>
+          <div style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            Source: {def.source}
+          </div>
         </div>
         <div style={trackStyle}><div style={knobStyle}></div></div>
       </div>
