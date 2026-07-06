@@ -146,23 +146,149 @@ function GenieMessage({ msg }) {
   );
 }
 
+// ---------- Table builder helpers ----------
+
+// Round to 1 decimal, strip trailing ".0".
+function _round1(n) {
+  const s = n.toFixed(1);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
+
+// Convert snake_case / lower to Title Case. If the string already looks
+// presentational (has a space or an uppercase letter) leave it alone.
+// Also strips a trailing "_id" segment before prettifying.
+function _prettyHeader(name) {
+  if (/[A-Z ]/.test(name)) return name;
+  const stripped = name.replace(/_id$/i, '');
+  return stripped
+    .split(/[_\s]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+const STATUS_COLORS = {
+  understaffed: '#FF3621',
+  overstaffed: '#FFAB00',
+  balanced: '#00A972',
+};
+const NEUTRAL_DOT = '#618794';
+
+// Derive dot color from a row's status value (string).
+function _statusColor(val) {
+  if (val == null) return NEUTRAL_DOT;
+  return STATUS_COLORS[String(val).toLowerCase().trim()] || NEUTRAL_DOT;
+}
+
+// Format a single cell value given the original (pre-prettify) column name.
+function _formatValue(origHeader, value) {
+  if (value == null || value === undefined) return '';
+  const h = String(origHeader);
+  const isNumericStr = typeof value === 'string' && /^[+-]?\d+(\.\d+)?$/.test(value.trim());
+  if (typeof value === 'string' && !isNumericStr) {
+    // Already a string - capitalize bare status words, return as-is otherwise.
+    const lower = value.toLowerCase().trim();
+    if (STATUS_COLORS[lower]) return lower.charAt(0).toUpperCase() + lower.slice(1);
+    return value;
+  }
+  const n = parseFloat(value);
+  if (isNaN(n)) return String(value);
+
+  const hl = h.toLowerCase();
+  // Hours-like columns
+  if (/hour|sched|ideal|\bh\b|labor|gap\b|rec\b|add\b/i.test(h)) {
+    const base = _round1(n) + 'h';
+    if (/gap|add|delta|change|diff/i.test(h)) {
+      if (n > 0) return '+' + base;
+      if (n < 0) return base; // toFixed already includes the minus
+      return base;
+    }
+    return base;
+  }
+  // Percent-like columns
+  if (/pct|percent|rate|delta|share/i.test(h)) {
+    const base = _round1(n) + '%';
+    if (/delta|gap|change|diff/i.test(h)) {
+      if (n > 0) return '+' + base;
+    }
+    return base;
+  }
+  // Count-like columns
+  if (/visit|count|traffic|visitors|hours?_total/i.test(h)) {
+    return Math.round(n).toLocaleString('en-US');
+  }
+  // Default numeric
+  return _round1(n);
+}
+
 // ---------- Table builder from live API columns+rows ----------
 
 /**
  * Build the table shape { h0, hrest, rows } from the raw API response.
+ * Grain-adaptive: hides id columns, picks a label column, colors status dots,
+ * and formats values per header heuristics.
  * columns: string[] (column names)
  * rows: any[][] (value lists)
  */
 function buildTable(columns, rows) {
   if (!columns || !columns.length || !rows || !rows.length) return null;
+
+  // Rule 1: hide id columns (match /^id$|_id$/i).
+  // Exception: keep first column if ALL are ids so table is not empty.
+  const idRe = /^id$|_id$/i;
+  let displayIdx = columns.map((c, i) => i).filter(i => !idRe.test(columns[i]));
+  if (displayIdx.length === 0) displayIdx = [0];
+
+  // Rule 2: pick the label column - first displayed non-numeric column,
+  // preferring one whose name matches a "name-like" pattern.
+  const nameLikeRe = /name|store|daypart|label|title|zip|neighborhood|category/i;
   const capped = rows.slice(0, MAX_ROWS);
-  // First column is the name/label column; rest are value columns.
-  const [h0, ...hrest] = columns;
-  const tableRows = capped.map((r, i) => ({
-    name: String(r[0] ?? ''),
-    vals: r.slice(1).map(v => v == null ? '' : String(v)),
-    dot: '#618794', // neutral slate; could be logic-driven but API has no status field
-  }));
+
+  function isNonNumericCol(ci) {
+    return capped.some(r => {
+      const v = r[ci];
+      if (v == null) return false;
+      if (typeof v === 'number') return false;
+      return isNaN(Number(v));
+    });
+  }
+
+  const nonNumericDisplayed = displayIdx.filter(i => isNonNumericCol(i));
+  let labelIdx;
+  if (nonNumericDisplayed.length > 0) {
+    const preferred = nonNumericDisplayed.find(i => nameLikeRe.test(columns[i]));
+    labelIdx = preferred !== undefined ? preferred : nonNumericDisplayed[0];
+  } else {
+    labelIdx = displayIdx[0];
+  }
+
+  // Rule 3: find the status column for dot coloring.
+  const statusRe = /status/i;
+  const statusValues = new Set(['understaffed', 'overstaffed', 'balanced']);
+  let statusIdx = null;
+  for (const ci of displayIdx) {
+    if (statusRe.test(columns[ci])) { statusIdx = ci; break; }
+    const hasStatusVal = capped.some(r => {
+      const v = r[ci];
+      return v != null && statusValues.has(String(v).toLowerCase().trim());
+    });
+    if (hasStatusVal) { statusIdx = ci; break; }
+  }
+
+  // Rule 4: prettify headers.
+  const h0 = _prettyHeader(columns[labelIdx]);
+  const valueIdx = displayIdx.filter(i => i !== labelIdx);
+  const hrest = valueIdx.map(i => _prettyHeader(columns[i]));
+
+  // Build rows.
+  const tableRows = capped.map(r => {
+    const dotVal = statusIdx !== null ? r[statusIdx] : null;
+    return {
+      name: String(r[labelIdx] ?? ''),
+      vals: valueIdx.map(i => _formatValue(columns[i], r[i])),
+      dot: _statusColor(dotVal),
+    };
+  });
+
   return { h0, hrest, rows: tableRows };
 }
 
