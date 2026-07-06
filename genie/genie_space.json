@@ -8,31 +8,31 @@
     "clover_spatial_catalog.gold.v_daypart_coverage",
     "clover_spatial_catalog.gold.v_traffic_anomalies"
   ],
-  "general_instructions": "This Genie space is a Store Operations and Labor assistant for Clover restaurant locations.\n\nKey definitions:\n- labor_gap = ideal_hours - scheduled_hours (positive means understaffed, negative means overstaffed)\n- staffing_status = 'understaffed' when labor_gap >= 8, 'overstaffed' when labor_gap <= -8, 'balanced' otherwise\n- The target labor productivity rate is 165 visits per labor-hour\n- ideal_hours is derived from forecast_visits divided by 165 (the visits-per-labor-hour target)\n- traffic_delta_pct is the trailing-7-day visit count vs the prior 7-day period, expressed as a percentage change; a negative value indicates a localized foot-traffic drop\n- anomaly_driver describes the category of cause for an unusual traffic pattern (e.g. weather, event, construction)\n\nWhen answering staffing questions, always surface store_id, name, staffing_status, labor_gap, scheduled_hours, and ideal_hours. For traffic questions include traffic_delta_pct and recent_visits. For fleet summaries group by staffing_status.",
+  "general_instructions": "This Genie space is a Store Operations and Labor assistant for Clover restaurant locations.\n\nKey definitions:\n- labor_gap = ideal_hours - scheduled_hours (positive means understaffed, negative means overstaffed)\n- staffing_status = 'understaffed' when labor_gap >= 8, 'overstaffed' when labor_gap <= -8, 'balanced' otherwise\n- The target labor productivity rate is 165 visits per labor-hour\n- ideal_hours is derived from forecast_visits divided by 165 (the visits-per-labor-hour target)\n- traffic_delta_pct is the trailing-7-day visit count vs the prior 7-day period, expressed as a percentage change; a negative value indicates a localized foot-traffic drop\n- anomaly_driver describes the category of cause for an unusual traffic pattern (e.g. weather, event, construction)\n\nAlways answer by generating and running a SQL query against these tables. Every answer must produce a SQL query and a result table. Never answer with prose only, never embed the data inside a sentence, and never ask a clarifying question. If a question is ambiguous, pick the most likely interpretation and answer it with SQL.\n\nIn the SELECT list, alias columns to short, human-readable, Title Case names so results read like a report. Use these aliases for staffing questions: name AS Store, scheduled_hours AS Sched, ideal_hours AS Rec, (ideal_hours - scheduled_hours) AS `Add`, staffing_status AS Status. Do not expose internal id columns (store_id, id) unless the user explicitly asks for an id.\n\nKeep any accompanying explanation to a single short sentence summarizing the result; the table carries the detail.",
   "sample_queries": [
     {
       "title": "Understaffed stores ranked by labor gap",
-      "sql": "SELECT store_id, name, format, labor_gap, scheduled_hours, ideal_hours, forecast_visits\nFROM clover_spatial_catalog.gold.store_ops\nWHERE staffing_status = 'understaffed'\nORDER BY labor_gap DESC"
+      "sql": "SELECT name AS Store, scheduled_hours AS Sched, ideal_hours AS Rec,\n  (ideal_hours - scheduled_hours) AS `Add`,\n  staffing_status AS Status\nFROM clover_spatial_catalog.gold.store_ops\nWHERE staffing_status = 'understaffed'\nORDER BY (ideal_hours - scheduled_hours) DESC"
     },
     {
       "title": "Recommended labor hours per store sized to 165 visits per labor-hour",
-      "sql": "SELECT store_id, name, forecast_visits,\n  scheduled_hours,\n  ROUND(forecast_visits / 165.0, 1) AS ideal_hours,\n  ROUND(forecast_visits / 165.0 - scheduled_hours, 1) AS labor_gap\nFROM clover_spatial_catalog.gold.store_ops\nORDER BY labor_gap DESC"
+      "sql": "SELECT name AS Store, forecast_visits AS Forecast, scheduled_hours AS Sched,\n  ROUND(forecast_visits / 165.0, 1) AS Rec,\n  staffing_status AS Status\nFROM clover_spatial_catalog.gold.store_ops\nORDER BY forecast_visits DESC"
     },
     {
       "title": "Stores with the largest week-over-week traffic drops",
-      "sql": "SELECT store_id, name, traffic_delta_pct, recent_visits, base_traffic, anomaly_driver\nFROM clover_spatial_catalog.gold.v_traffic_anomalies\nWHERE traffic_delta_pct < 0\nORDER BY traffic_delta_pct ASC\nLIMIT 20"
+      "sql": "SELECT name AS Store, traffic_delta_pct AS `Wk Delta`,\n  recent_visits AS Visits, anomaly_driver AS Driver\nFROM clover_spatial_catalog.gold.v_traffic_anomalies\nWHERE traffic_delta_pct < 0\nORDER BY traffic_delta_pct ASC\nLIMIT 20"
     },
     {
       "title": "Daypart coverage gaps across the fleet",
-      "sql": "SELECT store_id, store_name, daypart, scheduled_coverage, traffic_index,\n  traffic_index - scheduled_coverage AS coverage_gap\nFROM clover_spatial_catalog.gold.v_daypart_coverage\nORDER BY coverage_gap DESC\nLIMIT 30"
+      "sql": "SELECT daypart AS Daypart, traffic_index AS Demand, scheduled_coverage AS Coverage,\n  (traffic_index - scheduled_coverage) AS Gap\nFROM clover_spatial_catalog.gold.v_daypart_coverage\nORDER BY Gap DESC\nLIMIT 30"
     },
     {
       "title": "Single-store drill-down by name",
-      "sql": "SELECT s.store_id, s.name, s.format, s.zip, s.sqft,\n  s.recent_visits, s.base_traffic, s.forecast_visits,\n  s.scheduled_hours, s.ideal_hours, s.labor_gap,\n  s.staffing_status, s.traffic_delta_pct, s.anomaly_driver,\n  l.lat, l.lon\nFROM clover_spatial_catalog.gold.store_ops s\nJOIN clover_spatial_catalog.gold.locations l ON s.store_id = l.store_id\nWHERE LOWER(s.name) LIKE LOWER('%:store_name%')"
+      "sql": "SELECT s.name AS Store, s.format AS Format, s.forecast_visits AS Forecast,\n  s.scheduled_hours AS Sched, s.ideal_hours AS Rec, s.labor_gap AS `Add`,\n  s.staffing_status AS Status, s.traffic_delta_pct AS `Wk Delta`\nFROM clover_spatial_catalog.gold.store_ops s\nWHERE LOWER(s.name) LIKE LOWER('%:store_name%')"
     },
     {
       "title": "Fleet staffing summary counts by staffing_status",
-      "sql": "SELECT staffing_status,\n  COUNT(*) AS store_count,\n  ROUND(AVG(labor_gap), 1) AS avg_labor_gap,\n  SUM(forecast_visits) AS total_forecast_visits,\n  ROUND(SUM(forecast_visits) / NULLIF(SUM(scheduled_hours), 0), 1) AS fleet_visits_per_labor_hour\nFROM clover_spatial_catalog.gold.store_ops\nGROUP BY staffing_status\nORDER BY CASE staffing_status WHEN 'understaffed' THEN 1 WHEN 'balanced' THEN 2 WHEN 'overstaffed' THEN 3 ELSE 4 END"
+      "sql": "SELECT staffing_status AS Status, COUNT(*) AS Stores,\n  ROUND(AVG(labor_gap), 1) AS `Avg Gap`,\n  SUM(forecast_visits) AS `Forecast Visits`\nFROM clover_spatial_catalog.gold.store_ops\nGROUP BY staffing_status\nORDER BY CASE staffing_status WHEN 'understaffed' THEN 1 WHEN 'balanced' THEN 2 WHEN 'overstaffed' THEN 3 ELSE 4 END"
     }
   ]
 }
