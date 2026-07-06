@@ -19,7 +19,7 @@
 
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import 'leaflet.heat';
+import { latLngToCell, cellToBoundary, gridDisk, gridDistance } from 'h3-js';
 
 // Fix Leaflet default icon path broken by bundlers
 delete L.Icon.Default.prototype._getIconUrl;
@@ -107,18 +107,60 @@ function buildStores() {
   _lg.stores = grp;
 }
 
-function buildTraffic() {
-  const max = Math.max(..._data.locations.map(x => x.recent_visits));
-  const pts = _data.locations.map(s => [s.lat, s.lng, s.recent_visits / max]);
-  // visitor origins from the bootstrap helpers contribute catchment heat
-  const origins = _data.visitor_origins || [];
-  for (const o of origins) {
-    pts.push([o.origin_lat, o.origin_lng, Math.min(0.6, (o.visitors / 300))]);
+const H3_RES = 9;
+const H3_KRING = 2; // spread radius in cells
+
+// light -> dark purple ramp; darker = more traffic
+function _purpleRamp(t) {
+  // t in [0,1]; interpolate across stops
+  const stops = [
+    [0.00, [242, 233, 247]], // #F2E9F7 light lavender
+    [0.35, [176, 124, 209]], // #B07CD1
+    [0.70, [126,  63, 168]], // #7E3FA8
+    [1.00, [ 74,  29, 110]], // #4A1D6E deep purple
+  ];
+  const x = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < stops.length; i++) {
+    if (x <= stops[i][0]) {
+      const [t0, c0] = stops[i - 1], [t1, c1] = stops[i];
+      const f = (x - t0) / (t1 - t0 || 1);
+      const c = c0.map((v, k) => Math.round(v + (c1[k] - v) * f));
+      return `rgb(${c[0]},${c[1]},${c[2]})`;
+    }
   }
-  _lg.traffic = L.heatLayer(pts, {
-    radius: 26, blur: 20, maxZoom: 14, minOpacity: 0.4, max: 1.0,
-    gradient: { 0.2: '#FFE08A', 0.45: '#FF9E94', 0.7: '#FF5F46', 1: '#FF3621' },
-  });
+  const last = stops[stops.length - 1][1];
+  return `rgb(${last[0]},${last[1]},${last[2]})`;
+}
+
+function buildTraffic() {
+  const cellWeights = {}; // h3index -> summed weight
+  const addPoint = (lat, lng, weight) => {
+    if (lat == null || lng == null || !weight) return;
+    const origin = latLngToCell(lat, lng, H3_RES);
+    for (const c of gridDisk(origin, H3_KRING)) {
+      const d = gridDistance(origin, c);      // 0..H3_KRING
+      const falloff = 1 / (1 + d * d);         // gaussian-ish decay
+      cellWeights[c] = (cellWeights[c] || 0) + weight * falloff;
+    }
+  };
+  for (const s of _data.locations) addPoint(s.lat, s.lng, s.recent_visits || 0);
+  for (const o of (_data.visitor_origins || [])) addPoint(o.origin_lat, o.origin_lng, o.visitors || 0);
+
+  const cells = Object.keys(cellWeights);
+  const grp = L.layerGroup();
+  if (cells.length) {
+    const max = Math.max(...cells.map(c => cellWeights[c])) || 1;
+    for (const c of cells) {
+      const t = cellWeights[c] / max;                 // 0..1
+      const boundary = cellToBoundary(c);             // [[lat,lng],...] (default latlng order)
+      grp.addLayer(L.polygon(boundary, {
+        stroke: true, color: '#4A1D6E', weight: 0.5, opacity: 0.22,
+        fillColor: _purpleRamp(t),
+        fillOpacity: 0.12 + 0.72 * Math.pow(t, 0.6),  // darker/more opaque = more traffic
+      }));
+    }
+  }
+  _lg.traffic = grp;
 }
 
 function buildTrade() {
