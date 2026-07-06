@@ -213,7 +213,9 @@ def ask_genie(
 
     # One-shot forcing retry: if Genie returned text only (no SQL), send a
     # follow-up directive in the same conversation to demand a SQL + table answer.
-    if sql_query is None or query_attachment_id is None:
+    # Note: the trigger is "no SQL", NOT a missing attachment_id. The pinned SDK
+    # does not expose attachment_id, so it is routinely None even when SQL exists.
+    if sql_query is None:
         log.warning(
             "DIAG Genie retry: first answer was text-only - sending _FORCE_SQL_DIRECTIVE"
         )
@@ -245,7 +247,7 @@ def ask_genie(
                     bool(retry_sql),
                     bool(retry_attach_id),
                 )
-                if retry_sql is not None and retry_attach_id is not None:
+                if retry_sql is not None:
                     # Retry produced SQL: use it. Prefer first answer's text if non-empty.
                     effective_text = first_text if first_text else retry_text
                     sql_query = retry_sql
@@ -253,8 +255,8 @@ def ask_genie(
                     msg_id = retry_msg_id
                     combined_text = effective_text
 
-    if sql_query is None or query_attachment_id is None:
-        # Text-only answer after retry (or retry not attempted/failed).
+    if sql_query is None:
+        # Genuinely text-only answer (after the forcing retry too).
         return {
             "text": combined_text,
             "sql": None,
@@ -263,16 +265,45 @@ def ask_genie(
             "conversation_id": conv_id,
         }
 
-    # Fetch query result rows.
+    # Fetch query result rows. The pinned SDK often does not surface an
+    # attachment_id (query_attachment_id is None even when SQL exists), so
+    # prefer the attachment-scoped API only when we actually have an id and
+    # otherwise use the message-level query-result API, which needs no id.
     columns: list[str] = []
     rows: list[list] = []
+    result_resp = None
     try:
-        result_resp = w.genie.get_message_attachment_query_result(
-            space_id=space_id,
-            conversation_id=conv_id,
-            message_id=msg_id,
-            attachment_id=query_attachment_id,
+        if query_attachment_id:
+            result_resp = w.genie.get_message_attachment_query_result(
+                space_id=space_id,
+                conversation_id=conv_id,
+                message_id=msg_id,
+                attachment_id=query_attachment_id,
+            )
+        else:
+            result_resp = w.genie.get_message_query_result(
+                space_id=space_id,
+                conversation_id=conv_id,
+                message_id=msg_id,
+            )
+    except Exception as exc:
+        log.warning(
+            "Genie: query-result fetch failed (had_attachment_id=%s): %s",
+            bool(query_attachment_id),
+            exc,
         )
+        # If the attachment-scoped call raised, retry via the message-level API.
+        if query_attachment_id:
+            try:
+                result_resp = w.genie.get_message_query_result(
+                    space_id=space_id,
+                    conversation_id=conv_id,
+                    message_id=msg_id,
+                )
+            except Exception as exc2:
+                log.warning("Genie: message-level query-result fallback failed: %s", exc2)
+
+    if result_resp is not None:
         stmt_resp = getattr(result_resp, "statement_response", None)
         if stmt_resp is not None:
             manifest = getattr(stmt_resp, "manifest", None)
@@ -283,9 +314,6 @@ def ask_genie(
                 columns = [getattr(c, "name", str(i)) for i, c in enumerate(schema_cols)]
                 data_array = getattr(result, "data_array", None) or []
                 rows = [list(row) for row in data_array]
-    except Exception as exc:
-        log.warning("Genie: could not fetch query result rows: %s", exc)
-        # Return what we have without rows.
 
     return {
         "text": combined_text,
