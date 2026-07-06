@@ -2,6 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { getBootstrap, getLayer } from './api.js';
 import { initMap, toggleLayer as mapToggleLayer, selectStore as mapSelectStore, clearStore as mapClearStore, destroyMap } from './map.js';
 import GeniePanel from './geniePanel.jsx';
+import ArchitecturePanel from './ArchitecturePanel.jsx';
 
 // ---------- Static layer definitions (UI metadata only) ----------
 
@@ -130,6 +131,9 @@ export default function App() {
   // Panel visibility
   const [showLeft, setShowLeft] = useState(true);
   const [showRight, setShowRight] = useState(true);
+
+  // Architecture panel toggle
+  const [showArch, setShowArch] = useState(false);
 
   // Genie seed question from store drill-down; wrapped in object so same store re-click still fires
   const [genieSeedQuestion, setGenieSeedQuestion] = useState(null);
@@ -330,6 +334,27 @@ export default function App() {
         <button onClick={() => setShowRight(r => !r)} style={genieBtnStyle}>
           <img src="/assets/genie-icon-full-color.svg" style={{ width: 15, height: 15, display: 'block' }} alt="" />
           Ask Genie
+        </button>
+        <button
+          onClick={() => setShowArch(a => !a)}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            height: 32, padding: '0 13px', borderRadius: 8,
+            font: '600 12px var(--font-sans)', cursor: 'pointer',
+            whiteSpace: 'nowrap', flexShrink: 0,
+            background: showArch ? 'rgba(255,255,255,.18)' : 'transparent',
+            color: showArch ? '#fff' : 'rgba(255,255,255,.75)',
+            border: showArch ? '1px solid rgba(255,255,255,.4)' : '1px solid rgba(255,255,255,.22)',
+            transition: 'all .15s',
+          }}
+          title={showArch ? 'Back to map' : 'View architecture diagram'}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/>
+            <line x1="8.5" y1="6" x2="15.5" y2="6"/><line x1="6" y1="8.5" x2="6" y2="15.5"/>
+            <line x1="8.5" y1="18" x2="15.5" y2="18"/><line x1="18" y1="8.5" x2="18" y2="15.5"/>
+          </svg>
+          {showArch ? '← Map' : 'Architecture'}
         </button>
         <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)', flexShrink: 0 }}></div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.15, flexShrink: 0 }}>
@@ -570,6 +595,9 @@ export default function App() {
             />
           </div>
         )}
+
+        {/* ARCHITECTURE OVERLAY: absolute, covers stage, map stays mounted */}
+        {showArch && <ArchitecturePanel onClose={() => setShowArch(false)} />}
       </div>
     </div>
   );
