@@ -157,6 +157,11 @@ function _round1(n) {
   return s.endsWith('.0') ? s.slice(0, -2) : s;
 }
 
+// Fixed 2 decimals, e.g. probability/score columns (avoids 7.0E-4 sci notation).
+function _round2(n) {
+  return n.toFixed(2);
+}
+
 // Convert snake_case / lower to Title Case. If the string already looks
 // presentational (has a space or an uppercase letter) leave it alone.
 // Also strips a trailing "_id" segment before prettifying.
@@ -192,7 +197,7 @@ function _statusColor(val) {
 function _formatValue(origHeader, value) {
   if (value == null || value === undefined) return '';
   const h = String(origHeader);
-  const isNumericStr = typeof value === 'string' && /^[+-]?\d+(\.\d+)?$/.test(value.trim());
+  const isNumericStr = typeof value === 'string' && /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(value.trim());
   if (typeof value === 'string' && !isNumericStr) {
     // Already a string - map bare status words to short labels, return as-is otherwise.
     const lower = value.toLowerCase().trim();
@@ -224,6 +229,10 @@ function _formatValue(origHeader, value) {
   // Count-like columns
   if (/visit|count|traffic|visitors|hours?_total/i.test(h)) {
     return Math.round(n).toLocaleString('en-US');
+  }
+  // Score / probability / index columns: fixed 2 decimals, no scientific notation
+  if (/score|probability|\bprob\b|index/i.test(h)) {
+    return _round2(n);
   }
   // Default numeric
   return _round1(n);
