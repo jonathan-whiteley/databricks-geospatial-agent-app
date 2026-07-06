@@ -19,6 +19,7 @@ const CHIPS = [
   { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Show a table of daypart coverage gaps across the fleet.' },
   { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'Show a fleet staffing summary table with store counts and average labor gap by staffing status.' },
   { key: 'proximity',  label: 'Nearest stores (ST_)',       question: 'Which stores are closest to each other?' },
+  { key: 'compProx',   label: 'Competitor proximity (ST_)',  question: 'Which stores are closest to a competitor?' },
 ];
 
 // Max table rows to render
