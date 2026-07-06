@@ -10,14 +10,14 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { postGenieAsk, postAction } from './api.js';
 
 // Default question auto-run on mount
-const DEFAULT_QUESTION = 'Which stores are understaffed for tomorrow?';
+const DEFAULT_QUESTION = 'Show a ranked table of understaffed stores with their scheduled hours, recommended hours, and added hours needed.';
 
 // Chip definitions: label + natural-language question sent to Genie
 const CHIPS = [
-  { key: 'laborHours', label: 'Suggest labor hours',        question: 'What labor hours should I schedule at my busiest stores tomorrow?' },
-  { key: 'drops',      label: 'Sudden traffic drops',       question: 'Which stores have sudden drops in foot traffic this week?' },
-  { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Where are the peak-hour staffing gaps across all stores?' },
-  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'How does scheduled staffing compare to actual foot traffic across stores?' },
+  { key: 'laborHours', label: 'Suggest labor hours',        question: 'Show a table of recommended labor hours per store for tomorrow, sized to the 165 visits per labor-hour target.' },
+  { key: 'drops',      label: 'Sudden traffic drops',       question: 'Show a table of stores with the largest week-over-week foot-traffic drops.' },
+  { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Show a table of daypart coverage gaps across the fleet.' },
+  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'Show a fleet staffing summary table with store counts and average labor gap by staffing status.' },
 ];
 
 // Max table rows to render

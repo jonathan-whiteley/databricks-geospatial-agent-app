@@ -35,6 +35,13 @@ _POLL_SLEEP = 2.0  # seconds between status polls
 _TERMINAL_OK = {MessageStatus.COMPLETED}
 _TERMINAL_BAD = {MessageStatus.FAILED, MessageStatus.CANCELLED, MessageStatus.QUERY_RESULT_EXPIRED}
 
+# Directive sent as a follow-up when Genie returns a text-only answer (no SQL).
+_FORCE_SQL_DIRECTIVE = (
+    "Answer the previous question by generating and running a SQL query over the gold tables"
+    " and returning the result as a table. Respond with the SQL query and its result table only."
+    " Do not reply with prose only and do not ask a clarifying question."
+)
+
 
 def _space_id() -> str:
     """Resolve the Genie space ID from env, file, or hardcoded fallback."""
@@ -64,6 +71,69 @@ def _empty_result(text: str, conversation_id: str = "") -> dict:
         "conversation_id": conversation_id,
     }
 
+
+# ---- polling and parsing helpers ---------------------------------------------
+
+def _poll_message(w, space_id: str, conv_id: str, msg_id: str, timeout_s: float):
+    """
+    Poll a Genie message until it reaches a terminal status or timeout.
+
+    Returns the final message object on COMPLETED, or a dict with key 'error'
+    on failure/timeout (so callers can return gracefully without raising).
+    """
+    deadline = time.monotonic() + timeout_s
+    while True:
+        try:
+            msg = w.genie.get_message(
+                space_id=space_id, conversation_id=conv_id, message_id=msg_id
+            )
+        except Exception as exc:
+            log.error("Genie: get_message poll failed: %s", exc)
+            return {"error": f"Genie poll error: {exc}"}
+
+        status = getattr(msg, "status", None)
+        if status in _TERMINAL_OK:
+            return msg
+        if status in _TERMINAL_BAD:
+            err_obj = getattr(msg, "error", None)
+            err_msg = getattr(err_obj, "message", str(err_obj)) if err_obj else str(status)
+            log.warning("Genie: message ended with status %s: %s", status, err_msg)
+            return {"error": f"Genie could not answer that question ({status})."}
+
+        if time.monotonic() >= deadline:
+            log.warning("Genie: timed out after %.0f s", timeout_s)
+            return {"error": "Genie did not respond in time. Please try again."}
+
+        time.sleep(_POLL_SLEEP)
+
+
+def _parse_attachments(msg) -> tuple[str, str | None, str | None]:
+    """
+    Extract (combined_text, sql_query, query_attachment_id) from a message's attachments.
+    """
+    attachments = getattr(msg, "attachments", None) or []
+    text_parts: list[str] = []
+    sql_query: str | None = None
+    query_attachment_id: str | None = None
+
+    for att in attachments:
+        text_att = getattr(att, "text", None)
+        if text_att is not None:
+            content = getattr(text_att, "content", None) or ""
+            if content:
+                text_parts.append(content)
+
+        query_att = getattr(att, "query", None)
+        if query_att is not None:
+            sql_query = getattr(query_att, "query", None)
+            query_attachment_id = (
+                getattr(att, "attachment_id", None) or getattr(query_att, "id", None)
+            )
+
+    return "\n\n".join(text_parts).strip(), sql_query, query_attachment_id
+
+
+# ---- public API --------------------------------------------------------------
 
 def ask_genie(
     question: str,
@@ -122,55 +192,69 @@ def ask_genie(
         return _empty_result("Genie returned an unexpected response.", conv_id)
 
     # Poll until terminal status or timeout.
-    deadline = time.monotonic() + timeout_s
-    while True:
-        try:
-            msg = w.genie.get_message(
-                space_id=space_id, conversation_id=conv_id, message_id=msg_id
-            )
-        except Exception as exc:
-            log.error("Genie: get_message poll failed: %s", exc)
-            return _empty_result(f"Genie poll error: {exc}", conv_id)
-
-        status = getattr(msg, "status", None)
-        if status in _TERMINAL_OK:
-            break
-        if status in _TERMINAL_BAD:
-            err_obj = getattr(msg, "error", None)
-            err_msg = getattr(err_obj, "message", str(err_obj)) if err_obj else str(status)
-            log.warning("Genie: message ended with status %s: %s", status, err_msg)
-            return _empty_result(f"Genie could not answer that question ({status}).", conv_id)
-
-        if time.monotonic() >= deadline:
-            log.warning("Genie: timed out after %.0f s", timeout_s)
-            return _empty_result(
-                "Genie did not respond in time. Please try again.", conv_id
-            )
-
-        time.sleep(_POLL_SLEEP)
+    msg = _poll_message(w, space_id, conv_id, msg_id, timeout_s)
+    if isinstance(msg, dict) and "error" in msg:
+        return _empty_result(msg["error"], conv_id)
 
     # Extract text and SQL from attachments.
+    combined_text, sql_query, query_attachment_id = _parse_attachments(msg)
+
+    # Diagnostic: what did Genie attach under this identity/token? (WARNING so it surfaces in app logs)
     attachments = getattr(msg, "attachments", None) or []
-    text_parts: list[str] = []
-    sql_query: str | None = None
-    query_attachment_id: str | None = None
+    log.warning(
+        "DIAG Genie attachments: count=%d kinds=%s sql_found=%s attach_id=%s obo=%s text_preview=%r",
+        len(attachments),
+        [("query" if getattr(a, "query", None) else "text" if getattr(a, "text", None) else "other") for a in attachments],
+        bool(sql_query),
+        bool(query_attachment_id),
+        bool(user_token),
+        combined_text[:80],
+    )
 
-    for att in attachments:
-        text_att = getattr(att, "text", None)
-        if text_att is not None:
-            content = getattr(text_att, "content", None) or ""
-            if content:
-                text_parts.append(content)
+    # One-shot forcing retry: if Genie returned text only (no SQL), send a
+    # follow-up directive in the same conversation to demand a SQL + table answer.
+    if sql_query is None or query_attachment_id is None:
+        log.warning(
+            "DIAG Genie retry: first answer was text-only - sending _FORCE_SQL_DIRECTIVE"
+        )
+        first_text = combined_text  # preserve for potential use below
 
-        query_att = getattr(att, "query", None)
-        if query_att is not None:
-            sql_query = getattr(query_att, "query", None)
-            query_attachment_id = getattr(att, "attachment_id", None) or getattr(query_att, "id", None)
+        try:
+            retry_wait = w.genie.create_message(
+                space_id=space_id, conversation_id=conv_id, content=_FORCE_SQL_DIRECTIVE
+            )
+            retry_msg_init = (
+                retry_wait.response if hasattr(retry_wait, "response") else retry_wait
+            )
+            retry_msg_id: str = (
+                getattr(retry_msg_init, "message_id", "")
+                or getattr(retry_msg_init, "id", "")
+                or ""
+            )
+        except Exception as exc:
+            log.error("Genie: retry create_message failed: %s", exc)
+            # Fall through to text-only return below
+            retry_msg_id = ""
 
-    combined_text = "\n\n".join(text_parts).strip()
+        if retry_msg_id:
+            retry_msg = _poll_message(w, space_id, conv_id, retry_msg_id, timeout_s)
+            if not (isinstance(retry_msg, dict) and "error" in retry_msg):
+                retry_text, retry_sql, retry_attach_id = _parse_attachments(retry_msg)
+                log.warning(
+                    "DIAG Genie retry result: sql_found=%s attach_id=%s",
+                    bool(retry_sql),
+                    bool(retry_attach_id),
+                )
+                if retry_sql is not None and retry_attach_id is not None:
+                    # Retry produced SQL: use it. Prefer first answer's text if non-empty.
+                    effective_text = first_text if first_text else retry_text
+                    sql_query = retry_sql
+                    query_attachment_id = retry_attach_id
+                    msg_id = retry_msg_id
+                    combined_text = effective_text
 
     if sql_query is None or query_attachment_id is None:
-        # Text-only answer (no SQL generated).
+        # Text-only answer after retry (or retry not attempted/failed).
         return {
             "text": combined_text,
             "sql": None,
