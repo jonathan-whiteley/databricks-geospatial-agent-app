@@ -113,19 +113,19 @@ function GenieMessage({ msg }) {
         {table && (
           <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
-              <span style={{ flex: 1.5, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
+              <span style={{ flex: 1.5, minWidth: 0, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
               {table.hrest.map((h, idx) => (
-                <span key={idx} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
+                <span key={idx} style={{ flex: 1, minWidth: 0, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h}</span>
               ))}
             </div>
             {table.rows.map((row, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 9px', background: i % 2 ? '#fff' : '#faf9f7' }}>
-                <span style={{ flex: 1.5, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ flex: 1.5, minWidth: 0, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {row.dot && <span style={{ flex: '0 0 6px', height: 6, borderRadius: '50%', background: row.dot, display: 'inline-block' }}></span>}
-                  {row.name}
+                  <span style={{ minWidth: 0 }}>{row.name}</span>
                 </span>
                 {row.vals.map((v, j) => (
-                  <span key={j} style={{ flex: 1, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)' }}>{v}</span>
+                  <span key={j} style={{ flex: 1, minWidth: 0, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
                 ))}
               </div>
             ))}
@@ -171,6 +171,12 @@ const STATUS_COLORS = {
   overstaffed: '#FFAB00',
   balanced: '#00A972',
 };
+// Short labels so the status cell stays narrow and columns stay aligned.
+const STATUS_LABELS = {
+  understaffed: 'UNDER',
+  overstaffed: 'OVER',
+  balanced: 'BALANCED',
+};
 const NEUTRAL_DOT = '#618794';
 
 // Derive dot color from a row's status value (string).
@@ -185,9 +191,9 @@ function _formatValue(origHeader, value) {
   const h = String(origHeader);
   const isNumericStr = typeof value === 'string' && /^[+-]?\d+(\.\d+)?$/.test(value.trim());
   if (typeof value === 'string' && !isNumericStr) {
-    // Already a string - capitalize bare status words, return as-is otherwise.
+    // Already a string - map bare status words to short labels, return as-is otherwise.
     const lower = value.toLowerCase().trim();
-    if (STATUS_COLORS[lower]) return lower.charAt(0).toUpperCase() + lower.slice(1);
+    if (STATUS_LABELS[lower]) return STATUS_LABELS[lower];
     return value;
   }
   const n = parseFloat(value);
