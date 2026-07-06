@@ -7,11 +7,13 @@ import ArchitecturePanel from './ArchitecturePanel.jsx';
 // ---------- Static layer definitions (UI metadata only) ----------
 
 const LAYER_DEFS = [
-  { key: 'stores',      name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
-  { key: 'traffic',     name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'competitors', name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
-  { key: 'pois',        name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
-  { key: 'cross',       name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
+  { key: 'stores',        name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
+  { key: 'traffic',       name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
+  { key: 'trade_areas',   name: 'Trade areas',               table: 'ST_Buffer · locations',            icon: '📐', iconBg: '#EDE7F6' },
+  { key: 'zip_choropleth',name: 'Visitors by ZIP',           table: 'geo_zips · ST_Contains',           icon: '🗺️', iconBg: '#E9F1F3' },
+  { key: 'competitors',   name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
+  { key: 'pois',          name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
+  { key: 'cross',         name: 'Cross-shopping',            table: 'cross_shopping',                   icon: '🔗', iconBg: '#EEF1F4' },
 ];
 
 
@@ -88,6 +90,22 @@ function LayerRow({ def, active, onToggle }) {
           </div>
         </div>
       )}
+      {active && def.key === 'zip_choropleth' && (
+        <div style={{ padding: '2px 10px 9px 48px' }}>
+          <div style={{ height: 7, borderRadius: 4, background: 'linear-gradient(90deg,#E3EAEC,#7BA3AD,#1B5162)' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 9px var(--font-mono)', color: 'var(--db-ink-muted)', marginTop: 2 }}>
+            <span>fewer visitors</span><span>more visitors</span>
+          </div>
+        </div>
+      )}
+      {active && def.key === 'trade_areas' && (
+        <div style={{ padding: '2px 10px 9px 48px' }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '500 10px var(--font-sans)', color: 'var(--db-ink-muted)' }}>
+            <i style={{ width: 12, height: 12, borderRadius: 2, border: '1.5px solid #7E3FA8', background: 'rgba(126,63,168,0.06)', display: 'inline-block', flexShrink: 0 }}></i>
+            ~1 mile trade area (ST_Buffer)
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -119,6 +137,7 @@ export default function App() {
   // Layer toggle state (mirrors map module)
   const [layersOn, setLayersOn] = useState({
     stores: true, traffic: true,
+    trade_areas: false, zip_choropleth: false,
     competitors: false, pois: false, cross: false,
   });
 
@@ -162,7 +181,9 @@ export default function App() {
           getLayer('competitors').catch(() => []),
           getLayer('pois').catch(() => []),
           getLayer('cross').catch(() => []),
-        ]).then(([tradeRows, competitorRows, poisRows, crossRows]) => {
+          getLayer('trade_areas').catch(() => []),
+          getLayer('zip_choropleth').catch(() => []),
+        ]).then(([tradeRows, competitorRows, poisRows, crossRows, tradeAreaRows, zipChoroplethRows]) => {
           // Merge layer data into the bootstrap payload under the field names map.js builders consume
           const merged = {
             ...data,
@@ -170,6 +191,8 @@ export default function App() {
             competitor_rows: competitorRows,
             poi_rows: poisRows,
             cross_rows: crossRows,
+            trade_area_rows: tradeAreaRows,
+            zip_choropleth_rows: zipChoroplethRows,
           };
 
           // Init Leaflet map with merged data

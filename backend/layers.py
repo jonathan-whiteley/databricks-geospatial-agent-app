@@ -29,13 +29,15 @@ from backend.db import run_sql
 # ---------------------------------------------------------------------------
 
 _LAYER_CATALOG = [
-    {"id": "stores",      "name": "Stores",           "table": f"{GOLD}.store_ops"},
-    {"id": "traffic",     "name": "Foot Traffic Heat", "table": f"{GOLD}.store_ops"},
-    {"id": "trade",       "name": "Trade Areas",       "table": f"{GOLD}.v_trade_areas"},
-    {"id": "demo",        "name": "Demographics",      "table": f"{GOLD}.v_demographics"},
-    {"id": "competitors", "name": "Competitors",       "table": f"{GOLD}.v_nearby_pois"},
-    {"id": "pois",        "name": "Nearby POIs",       "table": f"{GOLD}.v_nearby_pois"},
-    {"id": "cross",       "name": "Cross-Shopping",    "table": f"{GOLD}.v_cross_shopping"},
+    {"id": "stores",        "name": "Stores",            "table": f"{GOLD}.store_ops"},
+    {"id": "traffic",       "name": "Foot Traffic Heat", "table": f"{GOLD}.store_ops"},
+    {"id": "trade",         "name": "Trade Areas",       "table": f"{GOLD}.v_trade_areas"},
+    {"id": "demo",          "name": "Demographics",      "table": f"{GOLD}.v_demographics"},
+    {"id": "competitors",   "name": "Competitors",       "table": f"{GOLD}.v_nearby_pois"},
+    {"id": "pois",          "name": "Nearby POIs",       "table": f"{GOLD}.v_nearby_pois"},
+    {"id": "cross",         "name": "Cross-Shopping",    "table": f"{GOLD}.v_cross_shopping"},
+    {"id": "trade_areas",   "name": "Trade Areas",       "table": f"{GOLD}.store_ops"},
+    {"id": "zip_choropleth","name": "Visitors by ZIP",   "table": "clover_spatial_catalog.bronze.geo_zips"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -339,6 +341,33 @@ def get_layer(name: str, user_token: str | None = None) -> dict:
                 "lng":    r["origin_lng"],
                 "weight": r["visitors"] or 0,
             })
+
+    elif name == "trade_areas":
+        rows = run_sql(
+            f"SELECT s.store_id, s.name, "
+            f"ST_AsGeoJSON(ST_Buffer(ST_SetSRID(ST_Point(s.lon, s.lat), 4326), 0.0145)) AS geojson "
+            f"FROM {GOLD}.store_ops s",
+            user_token=user_token,
+        )
+        features = [
+            {"store_id": r["store_id"], "name": r["name"], "geojson": r["geojson"]}
+            for r in rows
+        ]
+
+    elif name == "zip_choropleth":
+        rows = run_sql(
+            f"SELECT z.zip AS zip, ROUND(SUM(t.visitors)) AS visitors, "
+            f"ANY_VALUE(ST_AsGeoJSON(z.geom)) AS geojson "
+            f"FROM clover_spatial_catalog.bronze.geo_zips z "
+            f"JOIN {GOLD}.v_trade_areas t "
+            f"  ON ST_Contains(z.geom, ST_SetSRID(ST_Point(t.origin_lng, t.origin_lat), 4326)) "
+            f"GROUP BY z.zip",
+            user_token=user_token,
+        )
+        features = [
+            {"zip": r["zip"], "visitors": r["visitors"], "geojson": r["geojson"]}
+            for r in rows
+        ]
 
     else:
         raise ValueError(f"Unknown layer name: {name!r}")

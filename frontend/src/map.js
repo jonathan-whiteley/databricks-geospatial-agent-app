@@ -271,6 +271,38 @@ function buildCross() {
   _lg.cross = grp;
 }
 
+function buildTradeAreas() {
+  const grp = L.layerGroup();
+  for (const r of (_data.trade_area_rows || [])) {
+    if (!r.geojson) continue;
+    const gj = L.geoJSON(JSON.parse(r.geojson), {
+      style: { color: '#7E3FA8', weight: 1.5, opacity: 0.7, fillColor: '#7E3FA8', fillOpacity: 0.06 },
+    });
+    if (r.name) gj.bindTooltip(`${r.name} - trade area`, { className: 'cv-tt' });
+    grp.addLayer(gj);
+  }
+  _lg.trade_areas = grp;
+}
+
+function buildZipChoropleth() {
+  const rows = (_data.zip_choropleth_rows || []).filter(r => r.geojson);
+  const grp = L.layerGroup();
+  if (rows.length) {
+    const max = Math.max(...rows.map(r => Number(r.visitors) || 0)) || 1;
+    const scale = ['#E3EAEC', '#A9C2C9', '#7BA3AD', '#4E7C8A', '#1B5162']; // slate ramp (matches demo)
+    for (const r of rows) {
+      const t = (Number(r.visitors) || 0) / max;
+      const col = scale[Math.min(scale.length - 1, Math.floor(t * scale.length))];
+      const gj = L.geoJSON(JSON.parse(r.geojson), {
+        style: { color: '#4E7C8A', weight: 0.5, opacity: 0.5, fillColor: col, fillOpacity: 0.55 },
+      });
+      gj.bindTooltip(`ZIP ${r.zip} - ${Math.round(Number(r.visitors)||0).toLocaleString('en-US')} visitors`, { className: 'cv-tt' });
+      grp.addLayer(gj);
+    }
+  }
+  _lg.zip_choropleth = grp;
+}
+
 // ---------------------------------------------------------------------------
 // Layer management
 // ---------------------------------------------------------------------------
@@ -278,7 +310,7 @@ function buildCross() {
 function applyLayers() {
   if (!_map) return;
   // bottom to top draw order
-  const ORDER = ['cross', 'traffic', 'competitors', 'pois', 'stores'];
+  const ORDER = ['zip_choropleth', 'cross', 'traffic', 'trade_areas', 'competitors', 'pois', 'stores'];
   for (const k of ORDER) {
     const on = _layersOn[k];
     const grp = _lg[k];
@@ -421,7 +453,7 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   _data = data;
   _onRecompute = onRecompute || null;
   _onStoreSelect = onStoreSelect || null;
-  _layersOn = { stores: true, traffic: true, competitors: false, pois: false, cross: false };
+  _layersOn = { stores: true, traffic: true, trade_areas: false, zip_choropleth: false, competitors: false, pois: false, cross: false };
 
   const map = L.map(container, {
     zoomControl: true,
@@ -439,13 +471,14 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   map.zoomControl.setPosition('bottomright');
 
   // Build all layer groups.
-  // Trade-areas and demographics layers are removed for now; buildTraffic still
-  // consumes visitor_origins for the heatmap.
+  // buildTraffic consumes visitor_origins for the heatmap.
   buildStores();
   buildTraffic();
   buildCompetitors();
   buildPois();
   buildCross();
+  buildZipChoropleth();
+  buildTradeAreas();
 
   // Apply initial visibility
   applyLayers();
