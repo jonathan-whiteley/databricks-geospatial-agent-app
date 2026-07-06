@@ -15,6 +15,7 @@ const DEFAULT_QUESTION = 'Show a ranked table of understaffed stores with their 
 // Chip definitions: label + natural-language question sent to Genie
 const CHIPS = [
   { key: 'compProx',   label: 'Competitor proximity (ST_)',  question: 'Which stores are closest to a competitor?' },
+  { key: 'newComp',    label: 'New competitor impact',        question: 'A new competitor opened at 42.3452 N, 71.0670 W. Is it close enough to actually affect me?' },
   { key: 'laborHours', label: 'Suggest labor hours',        question: 'Show a table of recommended labor hours per store for tomorrow, sized to the 165 visits per labor-hour target.' },
   { key: 'drops',      label: 'Sudden traffic drops',       question: 'Show a table of stores with the largest week-over-week foot-traffic drops.' },
   { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Show a table of daypart coverage gaps across the fleet.' },

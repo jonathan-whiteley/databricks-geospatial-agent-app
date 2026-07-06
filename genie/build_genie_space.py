@@ -100,6 +100,9 @@ def _build_serialized_space() -> str:
     for tbl in defn["tables"]:
         space.add_table(tbl)
 
+    for fn in defn.get("functions", []):
+        space.add_function(fn)
+
     for query in defn["sample_queries"]:
         space.add_example_sql(title=query["title"], sql=query["sql"])
 
