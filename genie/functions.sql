@@ -18,12 +18,18 @@ RETURN ST_DistanceSphere(
 );
 
 -- 2. in_trade_area: is a point inside / on the border of / outside a store trade area.
+--    Uses true polygon logic: ST_Contains against the store's ~1 mile (inside) and
+--    ~2 mile (borderline) trade-area polygons built with ST_Buffer.
 CREATE OR REPLACE FUNCTION clover_spatial_catalog.gold.in_trade_area(x DOUBLE, y DOUBLE, store_id STRING)
 RETURNS STRING
-COMMENT 'Call this to determine whether a specific location (e.g. a competitor or candidate site) falls inside, on the border of, or outside a store''s defined trade area. x is longitude, y is latitude. Returns inside, borderline, or outside.'
+COMMENT 'Call this to determine whether a specific location (competitor or candidate site) falls inside, on the border of, or outside a store''s trade area. x is longitude, y is latitude. Uses ST_Contains against the store''s ~1 mile trade-area polygon (ST_Buffer). Returns inside, borderline, or outside.'
 RETURN CASE
-  WHEN clover_spatial_catalog.gold.distance_to(in_trade_area.x, in_trade_area.y, in_trade_area.store_id) <= 1609.34 THEN 'inside'
-  WHEN clover_spatial_catalog.gold.distance_to(in_trade_area.x, in_trade_area.y, in_trade_area.store_id) <= 3218.69 THEN 'borderline'
+  WHEN ST_Contains(
+        ST_Buffer((SELECT ST_SetSRID(ST_Point(MAX(l.lon), MAX(l.lat)), 4326) FROM clover_spatial_catalog.gold.locations l WHERE l.store_id = in_trade_area.store_id), 0.0145),
+        ST_SetSRID(ST_Point(in_trade_area.x, in_trade_area.y), 4326)) THEN 'inside'
+  WHEN ST_Contains(
+        ST_Buffer((SELECT ST_SetSRID(ST_Point(MAX(l.lon), MAX(l.lat)), 4326) FROM clover_spatial_catalog.gold.locations l WHERE l.store_id = in_trade_area.store_id), 0.029),
+        ST_SetSRID(ST_Point(in_trade_area.x, in_trade_area.y), 4326)) THEN 'borderline'
   ELSE 'outside'
 END;
 
