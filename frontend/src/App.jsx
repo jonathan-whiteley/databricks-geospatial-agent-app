@@ -66,7 +66,7 @@ function LayerRow({ def, active, onToggle }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: '600 13px var(--font-sans)', color: 'var(--db-navy)' }}>{def.name}</div>
           <div style={{ font: '400 11px var(--font-sans)', color: 'var(--db-ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            Source: {def.source}
+            {def.source}
           </div>
         </div>
         <div style={trackStyle}><div style={knobStyle}></div></div>
