@@ -308,12 +308,38 @@ def ask_genie(
         if stmt_resp is not None:
             manifest = getattr(stmt_resp, "manifest", None)
             result = getattr(stmt_resp, "result", None)
-            if manifest and result:
+            if manifest is not None:
                 schema = getattr(manifest, "schema", None)
                 schema_cols = getattr(schema, "columns", None) or []
                 columns = [getattr(c, "name", str(i)) for i, c in enumerate(schema_cols)]
-                data_array = getattr(result, "data_array", None) or []
+            data_array = getattr(result, "data_array", None) if result is not None else None
+            if data_array:
                 rows = [list(row) for row in data_array]
+            else:
+                # The Genie query-result response carries only the manifest and a
+                # statement_id; the actual row data lives in the SQL Statement
+                # Execution API. Fetch it there when data_array came back empty.
+                statement_id = getattr(stmt_resp, "statement_id", None)
+                if statement_id:
+                    try:
+                        stmt = w.statement_execution.get_statement(statement_id)
+                        s_manifest = getattr(stmt, "manifest", None)
+                        s_result = getattr(stmt, "result", None)
+                        if not columns and s_manifest is not None:
+                            s_schema = getattr(s_manifest, "schema", None)
+                            s_cols = getattr(s_schema, "columns", None) or []
+                            columns = [getattr(c, "name", str(i)) for i, c in enumerate(s_cols)]
+                        s_data = getattr(s_result, "data_array", None) if s_result is not None else None
+                        rows = [list(row) for row in (s_data or [])]
+                        log.warning(
+                            "DIAG Genie rows via statement_execution: statement_id=%s rows=%d",
+                            statement_id, len(rows),
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "Genie: statement_execution fetch failed for %s: %s",
+                            statement_id, exc,
+                        )
 
     return {
         "text": combined_text,
