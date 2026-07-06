@@ -108,14 +108,17 @@ def _build_serialized_space() -> str:
 
     space.validate()
 
-    # The Genie API requires example_question_sqls to be sorted by id.
+    # The Genie API requires example_question_sqls to be sorted by id and
+    # sql_functions to be sorted by (id, identifier), or it rejects/drops them.
     # to_dict() does not guarantee this order, so sort in-place here.
     space_dict = space.to_dict()
-    example_sqls = (
-        space_dict.get("instructions", {}).get("example_question_sqls", [])
-    )
+    instr = space_dict.get("instructions", {})
+    example_sqls = instr.get("example_question_sqls", [])
     if isinstance(example_sqls, list):
         example_sqls.sort(key=lambda e: e.get("id", ""))
+    sql_functions = instr.get("sql_functions", [])
+    if isinstance(sql_functions, list):
+        sql_functions.sort(key=lambda e: (e.get("id", ""), e.get("identifier", "")))
     import json as _json
     return _json.dumps(space_dict, indent=2)
 
