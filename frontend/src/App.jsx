@@ -335,6 +335,7 @@ export default function App() {
           <img src="/assets/genie-icon-full-color.svg" style={{ width: 15, height: 15, display: 'block' }} alt="" />
           Ask Genie
         </button>
+        <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)', flexShrink: 0 }}></div>
         <button
           onClick={() => setShowArch(a => !a)}
           style={{
@@ -356,11 +357,6 @@ export default function App() {
           </svg>
           {showArch ? '← Map' : 'Architecture'}
         </button>
-        <div style={{ width: 1, height: 22, background: 'rgba(255,255,255,.18)', flexShrink: 0 }}></div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', lineHeight: 1.15, flexShrink: 0 }}>
-          <span style={{ font: '600 10px var(--font-sans)', color: 'rgba(255,255,255,.85)' }}>Live</span>
-          <span style={{ font: '400 10px var(--font-mono)', color: 'rgba(255,255,255,.45)' }}>{meta.refreshed}</span>
-        </div>
       </div>
 
       {/* STAGE */}
