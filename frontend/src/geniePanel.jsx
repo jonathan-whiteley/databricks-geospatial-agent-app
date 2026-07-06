@@ -18,6 +18,7 @@ const CHIPS = [
   { key: 'drops',      label: 'Sudden traffic drops',       question: 'Show a table of stores with the largest week-over-week foot-traffic drops.' },
   { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Show a table of daypart coverage gaps across the fleet.' },
   { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'Show a fleet staffing summary table with store counts and average labor gap by staffing status.' },
+  { key: 'proximity',  label: 'Store proximity',           question: "Show a table of each store's nearest neighboring store distance in kilometers using spatial ST_ functions, with staffing status." },
 ];
 
 // Max table rows to render
