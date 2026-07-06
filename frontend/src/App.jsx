@@ -65,7 +65,6 @@ function LayerRow({ def, active, onToggle }) {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ font: '600 13px var(--font-sans)', color: 'var(--db-navy)' }}>{def.name}</div>
-          <div style={{ font: '400 11px var(--font-mono)', color: 'var(--db-ink-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{def.table}</div>
         </div>
         <div style={trackStyle}><div style={knobStyle}></div></div>
       </div>
@@ -94,6 +93,14 @@ function LayerRow({ def, active, onToggle }) {
           <div style={{ height: 7, borderRadius: 4, background: 'linear-gradient(90deg,#E3EAEC,#7BA3AD,#1B5162)' }}></div>
           <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 9px var(--font-mono)', color: 'var(--db-ink-muted)', marginTop: 2 }}>
             <span>fewer visitors</span><span>more visitors</span>
+          </div>
+        </div>
+      )}
+      {active && def.key === 'traffic' && (
+        <div style={{ padding: '2px 10px 9px 48px' }}>
+          <div style={{ height: 7, borderRadius: 4, background: 'linear-gradient(90deg,#F2E9F7,#B07CD1,#7E3FA8,#4A1D6E)' }}></div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 9px var(--font-mono)', color: 'var(--db-ink-muted)', marginTop: 2 }}>
+            <span>low</span><span>high</span>
           </div>
         </div>
       )}
@@ -407,16 +414,6 @@ export default function App() {
           </svg>
         </button>
 
-        {/* Heat legend - shown when traffic layer is on and map ready */}
-        {ready && layersOn.traffic && (
-          <div style={{ position: 'absolute', left: 14, bottom: 14, zIndex: 650, background: 'rgba(255,255,255,.92)', backdropFilter: 'blur(6px)', border: '1px solid var(--db-line)', borderRadius: 10, padding: '9px 12px', boxShadow: 'var(--shadow-md)' }}>
-            <div style={{ font: '700 10px var(--font-sans)', letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--db-ink-muted)', marginBottom: 6 }}>Foot-traffic density</div>
-            <div style={{ width: 150, height: 8, borderRadius: 4, background: 'linear-gradient(90deg,#F2E9F7,#B07CD1,#7E3FA8,#4A1D6E)' }}></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)' }}>
-              <span>low</span><span>high</span>
-            </div>
-          </div>
-        )}
 
         {/* LEFT RAIL: layers + analytics */}
         {showLeft && (
