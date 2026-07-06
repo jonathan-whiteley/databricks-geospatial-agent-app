@@ -9,7 +9,6 @@ import ArchitecturePanel from './ArchitecturePanel.jsx';
 const LAYER_DEFS = [
   { key: 'stores',        name: 'Store locations',           table: 'locations',                       icon: '📍', iconBg: '#FFEDEA' },
   { key: 'traffic',       name: 'Foot traffic heatmap',      table: 'foot_traffic_daily',               icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'trade_areas',   name: 'Trade areas',               table: 'ST_Buffer · locations',            icon: '📐', iconBg: '#EDE7F6' },
   { key: 'zip_choropleth',name: 'Visitors by ZIP',           table: 'geo_zips · ST_Contains',           icon: '🗺️', iconBg: '#E9F1F3' },
   { key: 'competitors',   name: 'Competitors',               table: 'nearby_pois',                      icon: '🎯', iconBg: '#F6E4E7' },
   { key: 'pois',          name: 'Nearby POIs',               table: 'nearby_pois',                      icon: '🏬', iconBg: '#EEF1F4' },
@@ -98,14 +97,6 @@ function LayerRow({ def, active, onToggle }) {
           </div>
         </div>
       )}
-      {active && def.key === 'trade_areas' && (
-        <div style={{ padding: '2px 10px 9px 48px' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '500 10px var(--font-sans)', color: 'var(--db-ink-muted)' }}>
-            <i style={{ width: 12, height: 12, borderRadius: 2, border: '1.5px solid #7E3FA8', background: 'rgba(126,63,168,0.06)', display: 'inline-block', flexShrink: 0 }}></i>
-            ~1 mile trade area (ST_Buffer)
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -137,7 +128,7 @@ export default function App() {
   // Layer toggle state (mirrors map module)
   const [layersOn, setLayersOn] = useState({
     stores: true, traffic: true,
-    trade_areas: false, zip_choropleth: false,
+    zip_choropleth: false,
     competitors: false, pois: false, cross: false,
   });
 
@@ -181,9 +172,8 @@ export default function App() {
           getLayer('competitors').catch(() => []),
           getLayer('pois').catch(() => []),
           getLayer('cross').catch(() => []),
-          getLayer('trade_areas').catch(() => []),
           getLayer('zip_choropleth').catch(() => []),
-        ]).then(([tradeRows, competitorRows, poisRows, crossRows, tradeAreaRows, zipChoroplethRows]) => {
+        ]).then(([tradeRows, competitorRows, poisRows, crossRows, zipChoroplethRows]) => {
           // Merge layer data into the bootstrap payload under the field names map.js builders consume
           const merged = {
             ...data,
@@ -191,7 +181,6 @@ export default function App() {
             competitor_rows: competitorRows,
             poi_rows: poisRows,
             cross_rows: crossRows,
-            trade_area_rows: tradeAreaRows,
             zip_choropleth_rows: zipChoroplethRows,
           };
 

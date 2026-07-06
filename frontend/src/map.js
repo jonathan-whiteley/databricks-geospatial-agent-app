@@ -271,19 +271,6 @@ function buildCross() {
   _lg.cross = grp;
 }
 
-function buildTradeAreas() {
-  const grp = L.layerGroup();
-  for (const r of (_data.trade_area_rows || [])) {
-    if (!r.geojson) continue;
-    const gj = L.geoJSON(JSON.parse(r.geojson), {
-      style: { color: '#7E3FA8', weight: 1.5, opacity: 0.7, fillColor: '#7E3FA8', fillOpacity: 0.06 },
-    });
-    if (r.name) gj.bindTooltip(`${r.name} - trade area`, { className: 'cv-tt' });
-    grp.addLayer(gj);
-  }
-  _lg.trade_areas = grp;
-}
-
 function buildZipChoropleth() {
   const rows = (_data.zip_choropleth_rows || []).filter(r => r.geojson);
   const grp = L.layerGroup();
@@ -310,7 +297,7 @@ function buildZipChoropleth() {
 function applyLayers() {
   if (!_map) return;
   // bottom to top draw order
-  const ORDER = ['zip_choropleth', 'cross', 'traffic', 'trade_areas', 'competitors', 'pois', 'stores'];
+  const ORDER = ['zip_choropleth', 'cross', 'traffic', 'competitors', 'pois', 'stores'];
   for (const k of ORDER) {
     const on = _layersOn[k];
     const grp = _lg[k];
@@ -453,7 +440,7 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   _data = data;
   _onRecompute = onRecompute || null;
   _onStoreSelect = onStoreSelect || null;
-  _layersOn = { stores: true, traffic: true, trade_areas: false, zip_choropleth: false, competitors: false, pois: false, cross: false };
+  _layersOn = { stores: true, traffic: true, zip_choropleth: false, competitors: false, pois: false, cross: false };
 
   const map = L.map(container, {
     zoomControl: true,
@@ -478,7 +465,6 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   buildPois();
   buildCross();
   buildZipChoropleth();
-  buildTradeAreas();
 
   // Apply initial visibility
   applyLayers();

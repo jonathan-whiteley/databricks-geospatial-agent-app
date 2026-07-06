@@ -56,10 +56,6 @@
       "sql": "SELECT l.name AS Store,\n  clover_spatial_catalog.gold.in_trade_area(-71.0670, 42.3452, l.store_id) AS `Trade Area`,\n  ROUND(clover_spatial_catalog.gold.distance_to(-71.0670, 42.3452, l.store_id) / 1609.34, 2) AS `Dist Mi`,\n  clover_spatial_catalog.gold.competitor_impact(-71.0670, 42.3452, l.store_id) AS `Impact Score`,\n  clover_spatial_catalog.gold.impact_level(clover_spatial_catalog.gold.competitor_impact(-71.0670, 42.3452, l.store_id)) AS `Impact`\nFROM clover_spatial_catalog.gold.locations l\nORDER BY `Impact Score` DESC"
     },
     {
-      "title": "How many competitors fall inside each store's trade area",
-      "sql": "SELECT Store, COUNT(*) AS `Competitors In Area`\nFROM (\n  SELECT l.name AS Store,\n    clover_spatial_catalog.gold.in_trade_area(p.lon, p.lat, l.store_id) AS ta\n  FROM clover_spatial_catalog.gold.locations l\n  CROSS JOIN clover_spatial_catalog.bronze.nearby_pois p\n  WHERE p.poi_type = 'competitor'\n)\nWHERE ta = 'inside'\nGROUP BY Store\nORDER BY `Competitors In Area` DESC"
-    },
-    {
       "title": "How many visitors come from each ZIP code",
       "sql": "SELECT z.zip AS Zip, ROUND(SUM(t.visitors)) AS Visitors\nFROM clover_spatial_catalog.bronze.geo_zips z\nJOIN clover_spatial_catalog.gold.v_trade_areas t\n  ON ST_Contains(z.geom, ST_SetSRID(ST_Point(t.origin_lng, t.origin_lat), 4326))\nGROUP BY z.zip\nORDER BY Visitors DESC\nLIMIT 20"
     }
