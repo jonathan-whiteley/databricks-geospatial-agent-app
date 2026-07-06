@@ -25,17 +25,14 @@ log = logging.getLogger(__name__)
 
 # ---- constants ---------------------------------------------------------------
 
-_FALLBACK_ACTION = (
-    "Reallocate labor hours from overstaffed stores to the understaffed locations "
-    "flagged above, then recheck at midday."
-)
+_FALLBACK_ACTION = "Shift hours from overstaffed to understaffed stores."
 _MAX_ROWS_PREVIEW = 10
-_MAX_TOKENS = 80
+_MAX_TOKENS = 24
 
 _SYSTEM_PROMPT = (
-    "You are a retail store-ops advisor. "
-    "Given a question and its query result, reply with ONE concise next-best-action "
-    "sentence for a store-ops manager. No dashes."
+    "You are a retail store-ops advisor. Given a question and its query result, reply "
+    "with a very short next-best-action for a store-ops manager: one imperative phrase, "
+    "at most 12 words. No preamble, no explanation, no dashes."
 )
 
 
