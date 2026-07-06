@@ -10,14 +10,15 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { postGenieAsk, postAction } from './api.js';
 
 // Default question auto-run on mount
-const DEFAULT_QUESTION = 'Which stores are understaffed for tomorrow?';
+const DEFAULT_QUESTION = 'Show a ranked table of understaffed stores with their scheduled hours, recommended hours, and added hours needed.';
 
 // Chip definitions: label + natural-language question sent to Genie
 const CHIPS = [
-  { key: 'laborHours', label: 'Suggest labor hours',        question: 'What labor hours should I schedule at my busiest stores tomorrow?' },
-  { key: 'drops',      label: 'Sudden traffic drops',       question: 'Which stores have sudden drops in foot traffic this week?' },
-  { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Where are the peak-hour staffing gaps across all stores?' },
-  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'How does scheduled staffing compare to actual foot traffic across stores?' },
+  { key: 'laborHours', label: 'Suggest labor hours',        question: 'Show a table of recommended labor hours per store for tomorrow, sized to the 165 visits per labor-hour target.' },
+  { key: 'drops',      label: 'Sudden traffic drops',       question: 'Show a table of stores with the largest week-over-week foot-traffic drops.' },
+  { key: 'peaks',      label: 'Peak-hour gaps',             question: 'Show a table of daypart coverage gaps across the fleet.' },
+  { key: 'vsTraffic',  label: 'Staffing vs. foot traffic',  question: 'Show a fleet staffing summary table with store counts and average labor gap by staffing status.' },
+  { key: 'proximity',  label: 'Nearest stores (ST_)',       question: 'Which stores are closest to each other?' },
 ];
 
 // Max table rows to render
@@ -113,19 +114,19 @@ function GenieMessage({ msg }) {
         {table && (
           <div style={{ marginTop: 9, border: '1px solid var(--db-line)', borderRadius: 8, overflow: 'hidden' }}>
             <div style={{ display: 'flex', background: 'var(--db-oat-medium)', padding: '6px 9px', gap: 6 }}>
-              <span style={{ flex: 1.5, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
+              <span style={{ flex: 1.5, minWidth: 0, font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{table.h0}</span>
               {table.hrest.map((h, idx) => (
-                <span key={idx} style={{ flex: 1, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em' }}>{h}</span>
+                <span key={idx} style={{ flex: 1, minWidth: 0, textAlign: 'right', font: '700 10px var(--font-sans)', color: 'var(--db-ink-soft)', textTransform: 'uppercase', letterSpacing: '.04em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{h}</span>
               ))}
             </div>
             {table.rows.map((row, i) => (
               <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '7px 9px', background: i % 2 ? '#fff' : '#faf9f7' }}>
-                <span style={{ flex: 1.5, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ flex: 1.5, minWidth: 0, font: '600 12px var(--font-sans)', color: 'var(--db-navy)', display: 'flex', alignItems: 'center', gap: 5 }}>
                   {row.dot && <span style={{ flex: '0 0 6px', height: 6, borderRadius: '50%', background: row.dot, display: 'inline-block' }}></span>}
-                  {row.name}
+                  <span style={{ minWidth: 0 }}>{row.name}</span>
                 </span>
                 {row.vals.map((v, j) => (
-                  <span key={j} style={{ flex: 1, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)' }}>{v}</span>
+                  <span key={j} style={{ flex: 1, minWidth: 0, textAlign: 'right', font: '500 12px var(--font-mono)', color: 'var(--db-ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{v}</span>
                 ))}
               </div>
             ))}
@@ -146,23 +147,155 @@ function GenieMessage({ msg }) {
   );
 }
 
+// ---------- Table builder helpers ----------
+
+// Round to 1 decimal, strip trailing ".0".
+function _round1(n) {
+  const s = n.toFixed(1);
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
+
+// Convert snake_case / lower to Title Case. If the string already looks
+// presentational (has a space or an uppercase letter) leave it alone.
+// Also strips a trailing "_id" segment before prettifying.
+function _prettyHeader(name) {
+  if (/[A-Z ]/.test(name)) return name;
+  const stripped = name.replace(/_id$/i, '');
+  return stripped
+    .split(/[_\s]+/)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+const STATUS_COLORS = {
+  understaffed: '#FF3621',
+  overstaffed: '#FFAB00',
+  balanced: '#00A972',
+};
+// Short labels so the status cell stays narrow and columns stay aligned.
+const STATUS_LABELS = {
+  understaffed: 'UNDER',
+  overstaffed: 'OVER',
+  balanced: 'BALANCED',
+};
+const NEUTRAL_DOT = '#618794';
+
+// Derive dot color from a row's status value (string).
+function _statusColor(val) {
+  if (val == null) return NEUTRAL_DOT;
+  return STATUS_COLORS[String(val).toLowerCase().trim()] || NEUTRAL_DOT;
+}
+
+// Format a single cell value given the original (pre-prettify) column name.
+function _formatValue(origHeader, value) {
+  if (value == null || value === undefined) return '';
+  const h = String(origHeader);
+  const isNumericStr = typeof value === 'string' && /^[+-]?\d+(\.\d+)?$/.test(value.trim());
+  if (typeof value === 'string' && !isNumericStr) {
+    // Already a string - map bare status words to short labels, return as-is otherwise.
+    const lower = value.toLowerCase().trim();
+    if (STATUS_LABELS[lower]) return STATUS_LABELS[lower];
+    return value;
+  }
+  const n = parseFloat(value);
+  if (isNaN(n)) return String(value);
+
+  const hl = h.toLowerCase();
+  // Hours-like columns
+  if (/hour|sched|ideal|\bh\b|labor|gap\b|rec\b|add\b/i.test(h)) {
+    const base = _round1(n) + 'h';
+    if (/gap|add|delta|change|diff/i.test(h)) {
+      if (n > 0) return '+' + base;
+      if (n < 0) return base; // toFixed already includes the minus
+      return base;
+    }
+    return base;
+  }
+  // Percent-like columns
+  if (/pct|percent|rate|delta|share/i.test(h)) {
+    const base = _round1(n) + '%';
+    if (/delta|gap|change|diff/i.test(h)) {
+      if (n > 0) return '+' + base;
+    }
+    return base;
+  }
+  // Count-like columns
+  if (/visit|count|traffic|visitors|hours?_total/i.test(h)) {
+    return Math.round(n).toLocaleString('en-US');
+  }
+  // Default numeric
+  return _round1(n);
+}
+
 // ---------- Table builder from live API columns+rows ----------
 
 /**
  * Build the table shape { h0, hrest, rows } from the raw API response.
+ * Grain-adaptive: hides id columns, picks a label column, colors status dots,
+ * and formats values per header heuristics.
  * columns: string[] (column names)
  * rows: any[][] (value lists)
  */
 function buildTable(columns, rows) {
   if (!columns || !columns.length || !rows || !rows.length) return null;
+
+  // Rule 1: hide id columns (match /^id$|_id$/i).
+  // Exception: keep first column if ALL are ids so table is not empty.
+  const idRe = /^id$|_id$/i;
+  let displayIdx = columns.map((c, i) => i).filter(i => !idRe.test(columns[i]));
+  if (displayIdx.length === 0) displayIdx = [0];
+
+  // Rule 2: pick the label column - first displayed non-numeric column,
+  // preferring one whose name matches a "name-like" pattern.
+  const nameLikeRe = /name|store|daypart|label|title|zip|neighborhood|category/i;
   const capped = rows.slice(0, MAX_ROWS);
-  // First column is the name/label column; rest are value columns.
-  const [h0, ...hrest] = columns;
-  const tableRows = capped.map((r, i) => ({
-    name: String(r[0] ?? ''),
-    vals: r.slice(1).map(v => v == null ? '' : String(v)),
-    dot: '#618794', // neutral slate; could be logic-driven but API has no status field
-  }));
+
+  function isNonNumericCol(ci) {
+    return capped.some(r => {
+      const v = r[ci];
+      if (v == null) return false;
+      if (typeof v === 'number') return false;
+      return isNaN(Number(v));
+    });
+  }
+
+  const nonNumericDisplayed = displayIdx.filter(i => isNonNumericCol(i));
+  let labelIdx;
+  if (nonNumericDisplayed.length > 0) {
+    const preferred = nonNumericDisplayed.find(i => nameLikeRe.test(columns[i]));
+    labelIdx = preferred !== undefined ? preferred : nonNumericDisplayed[0];
+  } else {
+    labelIdx = displayIdx[0];
+  }
+
+  // Rule 3: find the status column for dot coloring.
+  const statusRe = /status/i;
+  const statusValues = new Set(['understaffed', 'overstaffed', 'balanced']);
+  let statusIdx = null;
+  for (const ci of displayIdx) {
+    if (statusRe.test(columns[ci])) { statusIdx = ci; break; }
+    const hasStatusVal = capped.some(r => {
+      const v = r[ci];
+      return v != null && statusValues.has(String(v).toLowerCase().trim());
+    });
+    if (hasStatusVal) { statusIdx = ci; break; }
+  }
+
+  // Rule 4: prettify headers.
+  const h0 = _prettyHeader(columns[labelIdx]);
+  const valueIdx = displayIdx.filter(i => i !== labelIdx);
+  const hrest = valueIdx.map(i => _prettyHeader(columns[i]));
+
+  // Build rows.
+  const tableRows = capped.map(r => {
+    const dotVal = statusIdx !== null ? r[statusIdx] : null;
+    return {
+      name: String(r[labelIdx] ?? ''),
+      vals: valueIdx.map(i => _formatValue(columns[i], r[i])),
+      dot: _statusColor(dotVal),
+    };
+  });
+
   return { h0, hrest, rows: tableRows };
 }
 

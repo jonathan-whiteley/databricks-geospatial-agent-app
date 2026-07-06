@@ -378,7 +378,7 @@ export default function App() {
         {ready && layersOn.traffic && (
           <div style={{ position: 'absolute', left: 14, bottom: 14, zIndex: 650, background: 'rgba(255,255,255,.92)', backdropFilter: 'blur(6px)', border: '1px solid var(--db-line)', borderRadius: 10, padding: '9px 12px', boxShadow: 'var(--shadow-md)' }}>
             <div style={{ font: '700 10px var(--font-sans)', letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--db-ink-muted)', marginBottom: 6 }}>Foot-traffic density</div>
-            <div style={{ width: 150, height: 8, borderRadius: 4, background: 'linear-gradient(90deg,#FFE08A,#FF9E94,#FF5F46,#FF3621)' }}></div>
+            <div style={{ width: 150, height: 8, borderRadius: 4, background: 'linear-gradient(90deg,#F2E9F7,#B07CD1,#7E3FA8,#4A1D6E)' }}></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, font: '400 10px var(--font-mono)', color: 'var(--db-ink-muted)' }}>
               <span>low</span><span>high</span>
             </div>
