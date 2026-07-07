@@ -86,7 +86,7 @@ function buildStores() {
   const grp = L.layerGroup();
   _storeMarkers = {};
   for (const s of _data.locations) {
-    const r = 7 + (s.recent_visits / 4200) * 11;
+    const r = 9; // uniform marker size; color encodes staffing status
     const m = L.circleMarker([s.lat, s.lng], {
       radius: r,
       fillColor: pinColor(s),
