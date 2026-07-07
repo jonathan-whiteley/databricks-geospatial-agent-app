@@ -113,7 +113,7 @@ export default function ArchitecturePanel({ onClose }) {
         { icon: '🚶', title: 'Foot Traffic',          mono: 'SafeGraph mobility' },
         { icon: '👥', title: 'Visitor Demographics',  mono: 'US Census · ACS' },
         { icon: '🎯', title: 'Competitors & POIs',    mono: 'OpenStreetMap' },
-        { icon: '🗺️', title: 'Geo Boundaries',        mono: 'US Census · TIGER/ZCTA' },
+        { icon: '🗺️', title: 'Geo Boundaries',        mono: 'US Census · TIGER' },
       ],
     },
     {

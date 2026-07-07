@@ -9,7 +9,7 @@ import ArchitecturePanel from './ArchitecturePanel.jsx';
 const LAYER_DEFS = [
   { key: 'stores',        name: 'Store locations',           source: 'Clover store master',        icon: '📍', iconBg: '#FFEDEA' },
   { key: 'traffic',       name: 'Foot traffic heatmap',      source: 'SafeGraph mobility · H3',     icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'zip_choropleth',name: 'Visitors by ZIP',           source: 'US Census · ZCTA',            icon: '🗺️', iconBg: '#E9F1F3' },
+  { key: 'zip_choropleth',name: 'Visitors by ZIP',           source: 'US Census',                   icon: '🗺️', iconBg: '#E9F1F3' },
   { key: 'competitors',   name: 'Competitors',               source: 'OpenStreetMap',               icon: '🎯', iconBg: '#F6E4E7' },
   { key: 'pois',          name: 'Nearby POIs',               source: 'OpenStreetMap',               icon: '🏬', iconBg: '#EEF1F4' },
   { key: 'cross',         name: 'Cross-shopping',            source: 'SafeGraph co-visits',         icon: '🔗', iconBg: '#EEF1F4' },
