@@ -271,25 +271,6 @@ function buildCross() {
   _lg.cross = grp;
 }
 
-function buildZipChoropleth() {
-  const rows = (_data.zip_choropleth_rows || []).filter(r => r.geojson);
-  const grp = L.layerGroup();
-  if (rows.length) {
-    const max = Math.max(...rows.map(r => Number(r.visitors) || 0)) || 1;
-    const scale = ['#E3EAEC', '#A9C2C9', '#7BA3AD', '#4E7C8A', '#1B5162']; // slate ramp (matches demo)
-    for (const r of rows) {
-      const t = (Number(r.visitors) || 0) / max;
-      const col = scale[Math.min(scale.length - 1, Math.floor(t * scale.length))];
-      const gj = L.geoJSON(JSON.parse(r.geojson), {
-        style: { color: '#4E7C8A', weight: 0.5, opacity: 0.5, fillColor: col, fillOpacity: 0.55 },
-      });
-      gj.bindTooltip(`ZIP ${r.zip} - ${Math.round(Number(r.visitors)||0).toLocaleString('en-US')} visitors`, { className: 'cv-tt' });
-      grp.addLayer(gj);
-    }
-  }
-  _lg.zip_choropleth = grp;
-}
-
 // ---------------------------------------------------------------------------
 // Layer management
 // ---------------------------------------------------------------------------
@@ -297,7 +278,7 @@ function buildZipChoropleth() {
 function applyLayers() {
   if (!_map) return;
   // bottom to top draw order
-  const ORDER = ['zip_choropleth', 'cross', 'traffic', 'competitors', 'pois', 'stores'];
+  const ORDER = ['cross', 'traffic', 'competitors', 'pois', 'stores'];
   for (const k of ORDER) {
     const on = _layersOn[k];
     const grp = _lg[k];
@@ -440,7 +421,7 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   _data = data;
   _onRecompute = onRecompute || null;
   _onStoreSelect = onStoreSelect || null;
-  _layersOn = { stores: true, traffic: true, zip_choropleth: false, competitors: false, pois: false, cross: false };
+  _layersOn = { stores: true, traffic: true, competitors: false, pois: false, cross: false };
 
   const map = L.map(container, {
     zoomControl: true,
@@ -464,7 +445,6 @@ export function initMap(container, data, { onRecompute, onStoreSelect } = {}) {
   buildCompetitors();
   buildPois();
   buildCross();
-  buildZipChoropleth();
 
   // Apply initial visibility
   applyLayers();

@@ -9,9 +9,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { postGenieAsk, postAction } from './api.js';
 
-// Default question auto-run on mount
-const DEFAULT_QUESTION = 'Show a ranked table of understaffed stores with their scheduled hours, recommended hours, and added hours needed.';
-
 // Chip definitions: label + natural-language question sent to Genie
 const CHIPS = [
   { key: 'compProx',   label: 'Competitor proximity (ST_)',  question: 'Which stores are closest to a competitor?' },
@@ -322,8 +319,6 @@ export default function GeniePanel({ onClose, seedQuestion }) {
   const conversationIdRef = useRef(null);
   // In-flight guard - prevents overlapping concurrent sends
   const sendingRef = useRef(false);
-  // Track if the auto-run default has been sent
-  const autoSentRef = useRef(false);
 
   const sendMessage = useCallback(async (question, _unused, isAuto) => {
     const q = question.trim();
@@ -398,13 +393,6 @@ export default function GeniePanel({ onClose, seedQuestion }) {
     }
   }, [messages, typing]);
 
-  // Auto-run the default question on first mount
-  useEffect(() => {
-    if (autoSentRef.current) return;
-    autoSentRef.current = true;
-    sendMessage(DEFAULT_QUESTION, null, true /* isAuto */);
-  }, [sendMessage]); // sendMessage is stable (useCallback with empty deps)
-
   // Handle seedQuestion from drill-down "Ask Genie how to staff this store"
   // seedQuestion is { q, ts } so the same store re-clicked always fires
   useEffect(() => {
@@ -448,8 +436,20 @@ export default function GeniePanel({ onClose, seedQuestion }) {
         className="lf"
         style={{ flex: 1, minHeight: 120, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 14 }}
       >
-        {messages.map((msg, i) => <GenieMessage key={i} msg={msg} />)}
-        {typing && <TypingIndicator />}
+        {messages.length === 0 && !typing ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, textAlign: 'center', padding: '24px 16px' }}>
+            <img src="/assets/genie-icon-full-color.svg" style={{ width: 64, height: 64, display: 'block' }} alt="Genie" />
+            <div style={{ font: '700 22px var(--font-sans)', color: 'var(--db-navy)', letterSpacing: '-0.01em' }}>GeoGenie</div>
+            <div style={{ font: '400 12px var(--font-sans)', color: 'var(--db-ink-muted)', maxWidth: 240, lineHeight: 1.5 }}>
+              Ask a question below, or pick a starter to explore labor, staffing, and foot traffic.
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg, i) => <GenieMessage key={i} msg={msg} />)}
+            {typing && <TypingIndicator />}
+          </>
+        )}
       </div>
 
       {/* Input area */}

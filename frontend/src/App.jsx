@@ -9,7 +9,6 @@ import ArchitecturePanel from './ArchitecturePanel.jsx';
 const LAYER_DEFS = [
   { key: 'stores',        name: 'Store locations',           source: 'Clover store master',        icon: '📍', iconBg: '#FFEDEA' },
   { key: 'traffic',       name: 'Foot traffic heatmap',      source: 'SafeGraph mobility · H3',     icon: '🔥', iconBg: '#FFF3E6' },
-  { key: 'zip_choropleth',name: 'Visitors by ZIP',           source: 'US Census',                   icon: '🗺️', iconBg: '#E9F1F3' },
   { key: 'competitors',   name: 'Competitors',               source: 'OpenStreetMap',               icon: '🎯', iconBg: '#F6E4E7' },
   { key: 'pois',          name: 'Nearby POIs',               source: 'OpenStreetMap',               icon: '🏬', iconBg: '#EEF1F4' },
   { key: 'cross',         name: 'Cross-shopping',            source: 'SafeGraph co-visits',         icon: '🔗', iconBg: '#EEF1F4' },
@@ -91,14 +90,6 @@ function LayerRow({ def, active, onToggle }) {
           </div>
         </div>
       )}
-      {active && def.key === 'zip_choropleth' && (
-        <div style={{ padding: '2px 10px 9px 48px' }}>
-          <div style={{ height: 7, borderRadius: 4, background: 'linear-gradient(90deg,#E3EAEC,#7BA3AD,#1B5162)' }}></div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', font: '400 9px var(--font-mono)', color: 'var(--db-ink-muted)', marginTop: 2 }}>
-            <span>fewer visitors</span><span>more visitors</span>
-          </div>
-        </div>
-      )}
       {active && def.key === 'traffic' && (
         <div style={{ padding: '2px 10px 9px 48px' }}>
           <div style={{ height: 7, borderRadius: 4, background: 'linear-gradient(90deg,#F2E9F7,#B07CD1,#7E3FA8,#4A1D6E)' }}></div>
@@ -138,7 +129,6 @@ export default function App() {
   // Layer toggle state (mirrors map module)
   const [layersOn, setLayersOn] = useState({
     stores: true, traffic: true,
-    zip_choropleth: false,
     competitors: false, pois: false, cross: false,
   });
 
@@ -182,8 +172,7 @@ export default function App() {
           getLayer('competitors').catch(() => []),
           getLayer('pois').catch(() => []),
           getLayer('cross').catch(() => []),
-          getLayer('zip_choropleth').catch(() => []),
-        ]).then(([tradeRows, competitorRows, poisRows, crossRows, zipChoroplethRows]) => {
+        ]).then(([tradeRows, competitorRows, poisRows, crossRows]) => {
           // Merge layer data into the bootstrap payload under the field names map.js builders consume
           const merged = {
             ...data,
@@ -191,7 +180,6 @@ export default function App() {
             competitor_rows: competitorRows,
             poi_rows: poisRows,
             cross_rows: crossRows,
-            zip_choropleth_rows: zipChoroplethRows,
           };
 
           // Init Leaflet map with merged data
@@ -598,7 +586,7 @@ export default function App() {
         {showRight && (
           <div style={rightPanelStyle}>
             <GeniePanel
-              onClose={() => setShowRight(false)}
+              onClose={() => { setShowRight(false); setGenieSeedQuestion(null); }}
               seedQuestion={genieSeedQuestion}
             />
           </div>
